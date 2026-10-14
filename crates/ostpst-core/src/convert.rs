@@ -4,7 +4,7 @@
 
 //! Turn a file a PST cannot hold into one: an Outlook 2013+ OST, or an ANSI PST.
 //!
-//! This is the third thing the payware sells — "OST to PST Converter" — and the one
+//! This is the third thing the payware sells, "OST to PST Converter", and the one
 //! [`repair`](crate::repair) refused, correctly, because it is not a repair. A repair
 //! copies blocks byte for byte and rebuilds only the index around them, which is why it
 //! cannot corrupt a property. A conversion cannot do that: the 4K-page format an Outlook
@@ -12,7 +12,7 @@
 //! plain and hold 8176 bytes at the very most. Every block has to be decoded, and some of
 //! them have to be taken apart.
 //!
-//! An ANSI PST — Outlook 97 to 2002 — arrives here for a different reason and leaves by
+//! An ANSI PST, Outlook 97 to 2002, arrives here for a different reason and leaves by
 //! the same door. Nothing in it is compressed and its blocks are already small enough,
 //! but every id and offset in it is 32 bits and both its trailers are a different shape,
 //! so a block copied across would carry a trailer no Unicode reader can parse. Rebuilding
@@ -22,14 +22,14 @@
 //! other half of why anyone wants this conversion.
 //!
 //! So this rebuilds the file a level up. It walks the nodes, and for each one takes the
-//! *data stream* behind it — whatever chain of blocks and XBLOCKs the OST used to hold it
-//! — and lays that stream out again as a PST would: plain blocks, an XBLOCK over them
+//! *data stream* behind it, whatever chain of blocks and XBLOCKs the OST used to hold it
+//!, and lays that stream out again as a PST would: plain blocks, an XBLOCK over them
 //! when there is more than one, an XXBLOCK when there are more than fit in an XBLOCK.
 //! Subnode trees are rebuilt the same way, recursively, since an attachment is a subnode
 //! and an embedded message is a subnode tree hanging off one.
 //!
-//! **Block boundaries are kept where they exist.** That is not tidiness. A heap-on-node —
-//! which is how every property context and every table is stored — addresses its
+//! **Block boundaries are kept where they exist.** That is not tidiness. A heap-on-node -
+//! which is how every property context and every table is stored, addresses its
 //! allocations by *which block* they are in (MS-PST 2.3.1.1, the `hidBlockIndex` field of
 //! an HID). Re-splitting a stream at different offsets would leave every one of those
 //! pointing at the wrong place, and the file would parse and give back the wrong answers,
@@ -38,8 +38,8 @@
 //! reported rather than done quietly.
 //!
 //! Nothing is re-encoded: the output declares `NDB_CRYPT_NONE` and its blocks are written
-//! plain. The encoding is keyless and protects nothing — that is the whole argument of
-//! this project — so preserving it would be work in exchange for nothing.
+//! plain. The encoding is keyless and protects nothing, that is the whole argument of
+//! this project, so preserving it would be work in exchange for nothing.
 
 use crate::ltp::{bth_records, is_inline, read_node_pc, Heap, NID_ROOT_FOLDER};
 use crate::ndb::{crc32, Node, Pst};
@@ -69,7 +69,7 @@ const VER_CLIENT: u16 = 19;
 
 /// How deep a subnode tree may nest before this gives up. An attachment is a subnode, an
 /// embedded message is a subnode tree under one, and its attachments are subnodes of
-/// that — real files go two or three deep. A hundred is a damaged file pointing at
+/// that, real files go two or three deep. A hundred is a damaged file pointing at
 /// itself, and the recursion here is the thing that would notice by overflowing a stack.
 const MAX_NEST: u32 = 100;
 
@@ -135,7 +135,7 @@ impl Out {
     fn block(&mut self, data: &[u8], internal: bool) -> Result<u64, String> {
         if data.len() > MAX_DATA {
             return Err(format!(
-                "a {}-byte block was built, and {MAX_DATA} is the most a PST can hold — \
+                "a {}-byte block was built, and {MAX_DATA} is the most a PST can hold, \
                  this is a bug in the converter, not in the file",
                 data.len()
             ));
@@ -247,7 +247,7 @@ impl Out {
         }
         if depth > MAX_NEST {
             return Err(format!(
-                "subnode trees nest more than {MAX_NEST} deep under node 0x{nid:X} — \
+                "subnode trees nest more than {MAX_NEST} deep under node 0x{nid:X}, \
                  the file points at itself"
             ));
         }
@@ -443,8 +443,8 @@ fn special_folders(pst: &mut Pst, nodes: &[Node]) -> Result<(u32, u32, u32), Str
 
 /// A property context in one heap block: the heap header, the B-tree header, its one
 /// leaf of records sorted by property id, the values, and the page map after them.
-/// Laid out as Outlook lays out a store — allocations back to back, the map straight
-/// after the last — so the one written here reads like the ones it wrote.
+/// Laid out as Outlook lays out a store, allocations back to back, the map straight
+/// after the last, so the one written here reads like the ones it wrote.
 fn pc_heap(props: &std::collections::BTreeMap<u16, (u16, Hnid)>) -> Result<Vec<u8>, String> {
     let hid = |index: usize| (index as u32) << 5;
     let mut leaf = Vec::new();
@@ -514,8 +514,8 @@ pub fn convert(
     out: &str,
     on: crate::Progress,
 ) -> Result<Rebuilt, String> {
-    // Start the ids past everything the source used. Nothing carries over — every block
-    // in the output is newly built — but a fresh range costs nothing and means an id in
+    // Start the ids past everything the source used. Nothing carries over, every block
+    // in the output is newly built, but a fresh range costs nothing and means an id in
     // the result can never be confused with an id in the file it came from.
     let first = (nodes
         .iter()
@@ -578,7 +578,7 @@ pub fn convert(
         }
     }
     if nbt.is_empty() {
-        return Err("no node could be read out of this file — there is nothing to convert".into());
+        return Err("no node could be read out of this file, there is nothing to convert".into());
     }
 
     let have: std::collections::HashSet<u64> = nbt.iter().map(|(k, _)| *k).collect();
@@ -677,7 +677,7 @@ mod tests {
 
     /// Compare a subnode tree in the source against the one in the output: the same local
     /// ids, each with the same data and the same tree under it. The block ids differ by
-    /// design — every one of them is new — so the comparison is on what they hold.
+    /// design, every one of them is new, so the comparison is on what they hold.
     fn same_subtree(a: &mut Pst, ab: u64, b: &mut Pst, bb: u64, what: &str) {
         let mut sa: Vec<_> = a
             .subnodes(ab)
@@ -711,7 +711,7 @@ mod tests {
     ///
     /// The block boundaries are asserted, not just the contents. A heap addresses its own
     /// allocations by block number, so a stream that came back with the same bytes split
-    /// differently would parse and answer wrongly — which is the failure this whole module
+    /// differently would parse and answer wrongly, which is the failure this whole module
     /// is arranged to avoid, and the one a bytes-only comparison would sail past.
     #[test]
     fn an_ost_converts_to_a_pst_holding_the_same_mail() {

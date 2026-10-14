@@ -5,19 +5,19 @@
 //! Write a damaged PST back out as a clean one.
 //!
 //! Export gets the mail out; this gets the *file* back. It is what the paid tools sell and
-//! the one thing reading alone cannot replace — a store Outlook will open, rather than a
+//! the one thing reading alone cannot replace, a store Outlook will open, rather than a
 //! folder of `.eml` a person then has to do something with.
 //!
 //! The trick is that almost nothing has to be understood to do it. A damaged PST is
 //! usually a broken *index* over intact *contents*: the blocks holding the heaps, the
 //! property contexts and the tables are fine, and only the B-trees, the header and the
-//! checksums over them are wrong. So every block is copied byte for byte — encoding,
-//! compression and all — and only the index around them is built fresh. Nothing here
+//! checksums over them are wrong. So every block is copied byte for byte, encoding,
+//! compression and all, and only the index around them is built fresh. Nothing here
 //! parses a property or a heap, which is why it cannot corrupt one.
 //!
 //! One byte of a copied block does change. A block's trailer carries `wSig`, computed from
 //! its own file offset and id (MS-PST 5.5), and the offset is exactly what a rebuild
-//! moves. Everything else in the trailer — the length, the CRC over the data, the id —
+//! moves. Everything else in the trailer, the length, the CRC over the data, the id -
 //! describes bytes that did not change, so it is carried across untouched.
 
 use crate::ndb::{crc32, Block, Node, Pst};
@@ -30,7 +30,7 @@ pub const AMAP_EVERY: u64 = 253_952;
 
 /// How many 512-byte slots at the head of an AMap section are left to the map pages.
 ///
-/// There are exactly four kinds of map — AMap, PMap, FMap, FPMap — and MS-PST's figure 3
+/// There are exactly four kinds of map, AMap, PMap, FMap, FPMap, and MS-PST's figure 3
 /// draws them in that order, each one immediately after the last, always at the start of
 /// an AMap section and nowhere else. How *often* the last two recur is the part the
 /// specification only draws: the prose gives the coverage of a page (an FMap ~125MB, an
@@ -39,7 +39,7 @@ pub const AMAP_EVERY: u64 = 253_952;
 /// map straight over a block.
 ///
 /// So it does not guess. All four slots are kept clear at the head of every section,
-/// which is a superset of any reading of that figure and costs 2KB in every 248KB — 0.8%
+/// which is a superset of any reading of that figure and costs 2KB in every 248KB, 0.8%
 /// of the file, against the alternative of refusing to rebuild anything over 32MB at all.
 /// Being wrong about an interval is now merely wasteful instead of destructive.
 pub const MAP_SLOTS: u64 = 4;
@@ -110,7 +110,7 @@ pub fn put64(b: &mut [u8], at: usize, v: u64) {
 ///
 /// The maps themselves are left as zeroes: the header goes out marked INVALID_AMAP, which
 /// MS-PST 2.6.1.3.7 defines as "rebuild these before touching the file", so their contents
-/// are Outlook's business. Their *space* is this code's business — a rebuild writes them
+/// are Outlook's business. Their *space* is this code's business, a rebuild writes them
 /// wherever the formula says, and anything living there would be overwritten.
 pub(crate) fn reserved(at: u64) -> bool {
     at >= AMAP_FIRST && (at - AMAP_FIRST) % AMAP_EVERY < MAP_SLOTS * PAGE
@@ -123,7 +123,7 @@ fn block_span(cb: u16) -> u64 {
 
 /// The next offset at or after `at`, aligned, whose whole span clears the map slots.
 ///
-/// Blocks align to 64 and pages to 512 — a page landing mid-sector would still *read*,
+/// Blocks align to 64 and pages to 512, a page landing mid-sector would still *read*,
 /// since a BREF is just an offset, but nothing else writes one there and a repair is no
 /// place to be the first.
 pub(crate) fn place_aligned(mut at: u64, len: u64, align: u64) -> u64 {
@@ -248,10 +248,10 @@ pub fn rebuild(
     }
 
     // Blocks first: a node is only worth keeping if the block holding its data survived.
-    // Only which blocks survived is remembered here, not their bytes — the file being
+    // Only which blocks survived is remembered here, not their bytes, the file being
     // rebuilt can be tens of gigabytes, and it is read a second time to write them out.
-    // Both passes over the blocks count towards one bar. They are the same work twice —
-    // a read of every surviving block — so a half-full bar means roughly half the time.
+    // Both passes over the blocks count towards one bar. They are the same work twice -
+    // a read of every surviving block, so a half-full bar means roughly half the time.
     let steps = 2 * blocks.len() as u64;
     let mut step = 0;
 
@@ -270,7 +270,7 @@ pub fn rebuild(
     }
     if kept.is_empty() {
         return Err(
-            "no block survived well enough to copy — there is nothing to rebuild from".into(),
+            "no block survived well enough to copy, there is nothing to rebuild from".into(),
         );
     }
     kept.sort_by_key(|b| b.bid & !1);
@@ -312,7 +312,7 @@ pub fn rebuild(
         }
     }
     if keep.is_empty() {
-        return Err("no node survived with its data intact — there is nothing to rebuild".into());
+        return Err("no node survived with its data intact, there is nothing to rebuild".into());
     }
     keep.sort_by_key(|n| n.nid);
 
@@ -343,8 +343,8 @@ pub fn rebuild(
     let eof = next.div_ceil(BLOCK_ALIGN) * BLOCK_ALIGN;
 
     let mut header = pst.header_bytes()?;
-    // A pre-2013 OST is laid out exactly as a PST is — same pages, same blocks, same
-    // encoding — and only its header says otherwise. Copying it across is the whole of
+    // A pre-2013 OST is laid out exactly as a PST is, same pages, same blocks, same
+    // encoding, and only its header says otherwise. Copying it across is the whole of
     // the conversion in that case, so it is done here rather than refused.
     if pst.is_ost {
         put16(&mut header, 8, 0x4D53); // wMagicClient: 'SM'
@@ -373,7 +373,7 @@ pub fn rebuild(
 
     // Everything was placed at a rising offset, so the file can be written straight
     // through: header, blocks, then the two trees, with the gaps zero-filled as they come.
-    // Streaming rather than assembling it in memory is what lets the size cap go — a 40GB
+    // Streaming rather than assembling it in memory is what lets the size cap go, a 40GB
     // mailbox is a normal thing to be handed and is not going to fit in a Vec.
     if let Err(e) = write_out(
         pst, &header, &placed, &nbt_pages, &bbt_pages, eof, out, on, step, steps,
@@ -469,7 +469,7 @@ mod tests {
     ///
     /// Clean is the strong half: every checksum this writes is computed over bytes it just
     /// laid down, so a single warning on reopening means a structure was written wrong.
-    /// The same is the other half — a repair that loses the mail is not a repair.
+    /// The same is the other half, a repair that loses the mail is not a repair.
     #[test]
     fn a_rebuilt_file_reopens_clean_and_holds_the_same_nodes() {
         let src = "../../fixtures/data/dist-list.pst";
@@ -508,7 +508,7 @@ mod tests {
         assert_eq!(after_blocks.len(), r.blocks, "block count changed");
 
         // Every node has to name the same data, or the index was rebuilt pointing at the
-        // wrong thing — which reads perfectly and gives back somebody else's message.
+        // wrong thing, which reads perfectly and gives back somebody else's message.
         let before: std::collections::BTreeMap<u32, &Node> =
             nodes.iter().map(|n| (n.nid, n)).collect();
         for n in &after {
@@ -531,7 +531,7 @@ mod tests {
 
     /// A rebuild big enough to actually meet the map pages, which no fixture is.
     ///
-    /// `dist-list.pst` rebuilds to about 110KB — under half of one AMap section, so
+    /// `dist-list.pst` rebuilds to about 110KB, under half of one AMap section, so
     /// nothing in it ever reaches a map slot, and until this the writer had never had to
     /// step over one. Blocks are appended to the fixture until the rebuild spans several
     /// sections. They belong to no index, which is the point: carving reads blocks out of
@@ -628,7 +628,7 @@ mod tests {
     ///
     /// No fixture is anywhere near this big and there is no public one that is, so the
     /// placement is exercised on its own: the same loop `rebuild` runs, over blocks of
-    /// every legal size, checked for the three things that would corrupt a file — a block
+    /// every legal size, checked for the three things that would corrupt a file, a block
     /// sitting on a map slot, two blocks overlapping, or an offset going backwards, which
     /// would break the single forward pass the writer makes.
     #[test]
@@ -656,7 +656,7 @@ mod tests {
     #[test]
     fn a_map_slot_never_gets_a_block() {
         // All four slots of the first section, of the next one, and of a section 40GB in
-        // — the size this used to refuse outright, where an FMap and an FPMap can land.
+        //, the size this used to refuse outright, where an FMap and an FPMap can land.
         for section in [0, AMAP_EVERY, AMAP_EVERY * 165_000] {
             for slot in 0..MAP_SLOTS {
                 let at = AMAP_FIRST + section + slot * PAGE;

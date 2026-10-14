@@ -1,4 +1,4 @@
-//! Reading an ANSI PST — Outlook 97 to 2002 — and converting one to a Unicode PST.
+//! Reading an ANSI PST, Outlook 97 to 2002, and converting one to a Unicode PST.
 //!
 //! **There is no ANSI fixture, because there is no public ANSI PST.** Every route was
 //! checked when the corpus hunt was done for the damaged files: EDRM's Enron set, Digital
@@ -15,7 +15,7 @@
 //!   id, so every block fails its checksum.
 //! - Get the entry widths wrong and the node ids come out as garbage, or the walk refuses
 //!   the page for declaring entries too small.
-//! - Get the subnode block's 4-byte header wrong — Unicode pads it to 8 — and the
+//! - Get the subnode block's 4-byte header wrong, Unicode pads it to 8, and the
 //!   subnode tree reads one field to the left.
 //! - Get the page footer's position wrong (496, not 488, because the trailer is shorter)
 //!   and the entry count is read out of the last entry's bytes.
@@ -38,7 +38,7 @@ fn put32(b: &mut [u8], at: usize, v: u32) {
 }
 
 /// MS-PST 5.5, the block signature: the offset XOR the id, folded in half. Never checked
-/// by a reader, and written correctly anyway — a fixture that is wrong in a way nothing
+/// by a reader, and written correctly anyway, a fixture that is wrong in a way nothing
 /// looks at is a fixture that will mislead somebody later.
 fn sig(ib: u32, bid: u32) -> u16 {
     let x = ib ^ bid;
@@ -46,7 +46,7 @@ fn sig(ib: u32, bid: u32) -> u16 {
 }
 
 /// A file being built. Blocks first, then the two index pages, then the header over the
-/// space left for it — the same order a real writer uses, for the same reason.
+/// space left for it, the same order a real writer uses, for the same reason.
 struct Build {
     buf: Vec<u8>,
     nbt: Vec<[u8; 16]>,
@@ -69,7 +69,7 @@ impl Build {
         }
     }
 
-    /// One block: its data, padding, then the ANSI BLOCKTRAILER — cb, wSig, **bid**,
+    /// One block: its data, padding, then the ANSI BLOCKTRAILER, cb, wSig, **bid**,
     /// **dwCRC**, in that order. The Unicode one puts the checksum before the id.
     fn block(&mut self, bid: u32, data: &[u8]) {
         self.align_to(ALIGN);
@@ -205,7 +205,7 @@ fn sample(crypt: u8) -> Vec<u8> {
     put32(&mut sl, 12, 0);
     b.block(BID_SLBLOCK, &sl);
 
-    // An XBLOCK: btype, cLevel, cEnt, lcbTotal — 8 bytes in both formats — and then an
+    // An XBLOCK: btype, cLevel, cEnt, lcbTotal, 8 bytes in both formats, and then an
     // array of ids that is 4 bytes wide here and 8 in Unicode.
     let mut x = vec![0u8; 8 + 8];
     x[0] = 0x01;
@@ -306,7 +306,7 @@ fn recovery_works_on_an_ansi_file_too() {
     // index at all.
     let mut bytes = sample(0);
     let len = bytes.len();
-    // Both B-tree roots, wiped — as dead as scanpst can describe.
+    // Both B-tree roots, wiped, as dead as scanpst can describe.
     bytes[len - 2 * PAGE..].fill(0);
     let p = write("ostpst-ansi-torn.pst", &bytes);
 
@@ -377,7 +377,7 @@ fn an_ansi_pst_converts_to_a_unicode_one() {
     );
 
     // And the result is a Unicode PST, read back through its own header rather than by
-    // sweeping — which is the check a tool that recovers from a broken index can
+    // sweeping, which is the check a tool that recovers from a broken index can
     // otherwise pass while writing one.
     let mut back = Pst::open(out.to_str().unwrap()).unwrap();
     assert_eq!(back.ver, 23);
@@ -412,16 +412,16 @@ fn an_encoded_ansi_file_needs_no_password() {
     // Two things at once, both ANSI-specific and both silent when wrong.
     //
     // First: `bCryptMethod` is at offset 461 in an ANSI header and 513 in a Unicode one.
-    // Read it from the wrong place and the file decodes with the wrong method — or with
-    // none — and gives back plausible rubbish rather than an error.
+    // Read it from the wrong place and the file decodes with the wrong method, or with
+    // none, and gives back plausible rubbish rather than an error.
     //
     // Second: only *data* blocks are encoded, and which ones those are is bit 1 of the
     // block id. That bit means the same thing in a 32-bit id as in a 64-bit one, and a
     // reader that lost it while widening would try to decode the XBLOCK and the SLBLOCK
     // and follow the results into nowhere.
     //
-    // NDB_CRYPT_CYCLIC is used because it is symmetric — the same call encodes here and
-    // decodes there — and because no fixture has ever exercised it against a whole file.
+    // NDB_CRYPT_CYCLIC is used because it is symmetric, the same call encodes here and
+    // decodes there, and because no fixture has ever exercised it against a whole file.
     // Its key is the block's own id, stored in the file next to the data it "protects",
     // which is the entire reason this project never asks for a password.
     let mut bytes = sample(2);

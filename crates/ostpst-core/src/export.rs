@@ -113,7 +113,7 @@ pub fn export(
 ///
 /// This is all "export just this folder" needs to be: [`export`] writes the messages it
 /// is given and builds its directory tree from the folder nodes, so handing it fewer
-/// messages is the whole of the feature. Every folder node is kept regardless — dropping
+/// messages is the whole of the feature. Every folder node is kept regardless, dropping
 /// them would put the surviving messages in `_no-folder` instead of where they live.
 pub fn subtree(nodes: &[Node], root: u32) -> Vec<Node> {
     let mut want = std::collections::HashSet::from([root]);
@@ -383,7 +383,7 @@ pub fn build_eml(pc: &Pc, attachments: &[Attachment], recipients: &[Recipient]) 
     if let Some((b, cs)) = html {
         // PidTagHtml does not always hold HTML. Outlook's own account-test message puts a
         // plain-text body in it, and declaring that text/html makes a reader fold the
-        // blank lines away — the only structure a plain-text body has. Nothing without a
+        // blank lines away, the only structure a plain-text body has. Nothing without a
         // single `<` anywhere in it is markup, whichever property it arrived in.
         let kind = if b.contains(&b'<') {
             "text/html"
@@ -520,7 +520,7 @@ impl Props {
 /// Build a `.msg`: Outlook's own format, which keeps the MAPI properties that a mail
 /// message has nowhere to put.
 ///
-/// Strings are written as Unicode throughout, and `PidTagStoreSupportMask` says so — a
+/// Strings are written as Unicode throughout, and `PidTagStoreSupportMask` says so, a
 /// reader uses that flag to decide how to interpret every string in the file, so getting
 /// it wrong turns the whole message into mojibake rather than failing outright.
 pub fn build_msg(pc: &Pc, attachments: &[Attachment], recipients: &[Recipient]) -> Vec<u8> {
@@ -878,7 +878,7 @@ mod tests {
     /// A body is typed by what it contains, not by the property it arrived in.
     ///
     /// The 2013 OST fixture stores its message body in `PidTagHtml` with no markup in it
-    /// at all — libpff reads the same bytes, so this is what Outlook wrote, not a
+    /// at all, libpff reads the same bytes, so this is what Outlook wrote, not a
     /// misread. Sending that out as `text/html` costs the reader every line break in it.
     #[test]
     fn a_body_with_no_markup_is_not_html_whatever_property_it_came_from() {

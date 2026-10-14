@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp, Calendar, Contact, ListTodo, NotebookPen, Paperclip, Mail, AlertCircle, Flag, FileWarning } from "lucide-react";
 import type { ItemType, MessageSummary, SortKey } from "@/lib/api";
-import { cn, formatDate, humanBytes } from "@/lib/utils";
+import { cn, formatDate, humanBytes, itemTypeLabel } from "@/lib/utils";
+
+const isMailLike = (t: ItemType) => t === "mail" || t === "meetingRequest" || t === "report" || t === "other";
 import { EmptyState, Spinner } from "@/components/ui";
 
 const ROW = 54;
@@ -174,7 +176,9 @@ export function MessageList({
                   <div className="min-w-0 flex-1 py-1.5">
                     <div className="flex items-center gap-2">
                       <span className="min-w-0 flex-1 truncate text-[13px]" title={m.senderEmail || m.senderName}>
-                        {m.senderName || m.senderEmail || <span className="text-fg-subtle">Unknown sender</span>}
+                        {isMailLike(m.itemType)
+                          ? m.senderName || m.senderEmail || <span className="text-fg-subtle">Unknown sender</span>
+                          : m.subject}
                       </span>
                       <span className="shrink-0 text-[11px] font-normal text-fg-muted" title={m.dateMs ? new Date(m.dateMs).toLocaleString() : ""}>
                         {formatDate(m.dateMs)}
@@ -185,7 +189,9 @@ export function MessageList({
                       {m.importance === 2 && <AlertCircle size={12} className="shrink-0 text-danger" aria-label="High importance" />}
                       {m.importance === 0 && <Flag size={12} className="shrink-0 text-fg-subtle" aria-label="Low importance" />}
                       {m.subject.startsWith("(unreadable") && <FileWarning size={12} className="shrink-0 text-danger" />}
-                      <span className="min-w-0 flex-1 truncate text-[12px] font-normal text-fg-muted">{m.subject}</span>
+                      <span className="min-w-0 flex-1 truncate text-[12px] font-normal text-fg-muted">
+                        {isMailLike(m.itemType) ? m.subject : itemTypeLabel[m.itemType] + (m.senderName ? ` · ${m.senderName}` : "")}
+                      </span>
                       {m.hasAttachments && <Paperclip size={12} className="shrink-0 text-fg-muted" />}
                       {m.size > 0 && <span className="shrink-0 text-[11px] font-normal text-fg-subtle">{humanBytes(m.size)}</span>}
                     </div>

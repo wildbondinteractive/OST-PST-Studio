@@ -108,14 +108,14 @@ export function MessagePreview({ mailboxId, nid, onOpenEmbedded }: { mailboxId: 
           <Badge tone="neutral">{itemTypeLabel[s.itemType]}</Badge>
         </div>
         <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
-          <dt className="text-fg-subtle">From</dt>
-          <dd className="truncate">
+          {(s.senderName || s.senderEmail) && <dt className="text-fg-subtle">From</dt>}
+          {(s.senderName || s.senderEmail) && <dd className="truncate">
             {s.senderName}
             {s.senderEmail && <span className="text-fg-muted"> &lt;{s.senderEmail}&gt;</span>}
             {detail.senderRepresentingName && detail.senderRepresentingName !== s.senderName && (
               <span className="text-fg-muted"> on behalf of {detail.senderRepresentingName}</span>
             )}
-          </dd>
+          </dd>}
           {[1, 2, 3].map((k) => {
             const list = detail.recipients.filter((r) => r.kind === k);
             const label = k === 1 ? "To" : k === 2 ? "Cc" : "Bcc";

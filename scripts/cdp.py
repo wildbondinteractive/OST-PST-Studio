@@ -20,7 +20,8 @@ import urllib.request
 
 import websocket
 
-PORT = 9222
+import os
+PORT = int(os.environ.get("CDP_PORT", "9222"))
 
 
 def connect():

@@ -4,8 +4,8 @@
 
 //! The node database: the header, the two B-trees, and the block index.
 //!
-//! This is the bottom layer of MS-PST. Everything above it — folders, messages,
-//! properties — is reached by looking a node up here and reading its blocks.
+//! This is the bottom layer of MS-PST. Everything above it, folders, messages,
+//! properties, is reached by looking a node up here and reading its blocks.
 //!
 //! Nothing in this layer is encoded. Pages and B-tree entries are stored in the clear
 //! whether or not the file has a "password", so a full structural survey of a PST needs
@@ -43,7 +43,7 @@ const OFF_CRC_FULL_END: usize = OFF_CRC_RANGE_START + 516;
 
 // The same fields in the ANSI header, which is 512 bytes and reaches them sooner: there
 // is no `bidUnused`, no `qwUnused` and no `dwAlign`, and the ROOT it holds is 40 bytes
-// rather than 72. MS-PST 2.2.2.6. There is no dwCRCFull at all — ANSI has the partial
+// rather than 72. MS-PST 2.2.2.6. There is no dwCRCFull at all, ANSI has the partial
 // one only, over the same 471 bytes from wMagicClient.
 const ANSI_OFF_UNIQUE: usize = 32;
 const ANSI_OFF_RGNID: usize = 36;
@@ -73,7 +73,7 @@ const MAX_BTREE_DEPTH: u32 = 32;
 /// stops being a report and starts being a wall, so the rest are counted instead.
 const MAX_WARNINGS: usize = 200;
 
-/// MS-PST's CRC is the ordinary CRC-32 — reflected, polynomial `0xEDB88320` — with no
+/// MS-PST's CRC is the ordinary CRC-32, reflected, polynomial `0xEDB88320`, with no
 /// initial value and no final inversion.
 ///
 /// The specification writes it as slicing-by-8 across eight 256-entry tables, which is
@@ -113,7 +113,7 @@ pub fn crc32(data: &[u8]) -> u32 {
 ///
 /// Established by reading real files, because the large-page variant is what Outlook 2013
 /// onwards writes for OST and it does not match the 512-byte layout by simple scaling.
-/// Three differences, all of them silent — a reader that assumes the 512-byte layout gets
+/// Three differences, all of them silent, a reader that assumes the 512-byte layout gets
 /// plausible-looking rubbish rather than an error:
 ///
 /// - Trailers sit **24** bytes from the end of a page or block, not 16.
@@ -135,7 +135,7 @@ struct Layout {
     block_trailer_back: u64,
     /// ANSI (Outlook 97–2002): every id and offset is 32 bits rather than 64, and both
     /// trailers put the id **before** the checksum instead of after it. That last one is
-    /// the trap — read an ANSI trailer with the Unicode offsets and the checksum field
+    /// the trap, read an ANSI trailer with the Unicode offsets and the checksum field
     /// holds the id, so every block in the file reports as damaged and nothing says why.
     narrow: bool,
 }
@@ -187,7 +187,7 @@ impl Layout {
     }
 
     /// Where a subnode block's entry array starts. Unicode has four bytes of padding
-    /// after the count that ANSI does not — MS-PST 2.2.2.8.3.3.1.2. An XBLOCK has
+    /// after the count that ANSI does not, MS-PST 2.2.2.8.3.3.1.2. An XBLOCK has
     /// `lcbTotal` there in both, so that one is 8 either way.
     fn sub_header(&self) -> usize {
         if self.narrow {
@@ -228,7 +228,7 @@ const LAYOUT_ANSI: Layout = Layout {
     narrow: true,
 };
 
-/// How data blocks are obfuscated. None of these take a key — the tables are fixed and
+/// How data blocks are obfuscated. None of these take a key, the tables are fixed and
 /// identical for every PST ever written, which is why a password cannot keep anyone out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Crypt {
@@ -292,7 +292,7 @@ pub struct Recovered {
 /// The honest limit of what can be known here: a PST frees an index page by unlinking it
 /// and leaving the bytes, so the sweep finds old entries alongside current ones and has
 /// to choose. Where the copies disagree the highest block id wins, because block ids come
-/// from a counter that only goes up — but if the page holding the *newest* entry is one of
+/// from a counter that only goes up, but if the page holding the *newest* entry is one of
 /// the ones that was lost, the highest id still present is an older revision, and nothing
 /// in the file says so. That node reads perfectly and quietly gives you last week's copy.
 /// It cannot be fixed. It can be named.
@@ -384,7 +384,7 @@ pub struct Pst {
     /// bid -> where its bytes are. Built on first use; the block B-tree is walked once.
     bbt: Option<HashMap<u64, Block>>,
     /// Everything survivable that looked wrong on the way through. This is the seed of
-    /// the damage report — the thing the paid tools replace with a progress bar.
+    /// the damage report, the thing the paid tools replace with a progress bar.
     pub warnings: Vec<String>,
     /// Total problems seen, including any past the listing cap.
     suppressed: usize,
@@ -439,7 +439,7 @@ impl Pst {
             ));
         }
         // The ANSI header is 512 bytes and the Unicode one 564, and which it is cannot be
-        // known until wVer has been read — which is inside the 512 both have.
+        // known until wVer has been read, which is inside the 512 both have.
         if h.len() < ANSI_HEADER_LEN {
             return Err(format!(
                 "{path}: has a PST signature but is only {actual_len} bytes - the header itself is cut short, so there is nothing left to recover from."
@@ -455,14 +455,14 @@ impl Pst {
         let client = u16le(&h, 8);
         if client != MAGIC_PST && client != MAGIC_OST {
             warnings.push(format!(
-                "header client signature is 0x{client:04X}, expected 'SM' or 'SO' — file may be damaged"
+                "header client signature is 0x{client:04X}, expected 'SM' or 'SO', file may be damaged"
             ));
         }
 
         let ver = u16le(&h, OFF_WVER);
         let page = match ver {
             // Outlook 97-2002. Half the widths, a smaller header, a shorter trailer with
-            // its fields the other way round, and a 2GB ceiling — but the same B-trees,
+            // its fields the other way round, and a 2GB ceiling, but the same B-trees,
             // the same heaps and the same keyless ciphers, so everything above this layer
             // is untouched by it.
             14 | 15 => LAYOUT_ANSI,
@@ -470,7 +470,7 @@ impl Pst {
             36 | 37 => LAYOUT_4K,
             other => {
                 warnings.push(format!(
-                    "unrecognised format version {other} — assuming 512-byte pages"
+                    "unrecognised format version {other}, assuming 512-byte pages"
                 ));
                 LAYOUT_512
             }
@@ -498,14 +498,14 @@ impl Pst {
 
         if h[off_sentinel] != SENTINEL {
             warnings.push(format!(
-                "header sentinel is 0x{:02X}, expected 0x80 — header may be damaged",
+                "header sentinel is 0x{:02X}, expected 0x80, header may be damaged",
                 h[off_sentinel]
             ));
         }
 
         // Both header CRCs cover runs starting at wMagicClient. If the partial one fails,
         // the B-tree roots read below cannot be trusted at all, which is exactly the case
-        // where scanning the file beats following them. ANSI has only the partial one —
+        // where scanning the file beats following them. ANSI has only the partial one -
         // dwCRCFull is Unicode-only, and checking a reserved run against it would report
         // damage on every healthy ANSI file there is.
         let mut sums = vec![(
@@ -524,7 +524,7 @@ impl Pst {
             let found = crc32(&h[range]);
             if found != stored {
                 warnings.push(format!(
-                    "header {name} checksum is 0x{stored:08X} but the bytes give 0x{found:08X} — the header has been altered or damaged"
+                    "header {name} checksum is 0x{stored:08X} but the bytes give 0x{found:08X}, the header has been altered or damaged"
                 ));
             }
         }
@@ -538,7 +538,7 @@ impl Pst {
         }
         if h[off_amap] == 0 {
             warnings
-                .push("allocation map is marked invalid — the file was not closed cleanly".into());
+                .push("allocation map is marked invalid, the file was not closed cleanly".into());
         }
 
         Ok(Pst {
@@ -579,7 +579,7 @@ impl Pst {
         let t = self.page.trailer;
         if buf[t] != buf[t + 1] {
             return Err(format!(
-                "page at {} has mismatched type bytes (0x{:02X}/0x{:02X}) — not a page",
+                "page at {} has mismatched type bytes (0x{:02X}/0x{:02X}), not a page",
                 at.ib,
                 buf[t],
                 buf[t + 1]
@@ -588,7 +588,7 @@ impl Pst {
         // Low bit of a BID is reserved and is not part of the identity.
         if self.page.trailer_id(&buf, t) & !1 != at.bid & !1 {
             return Err(format!(
-                "page at {} claims block id {} but was reached as {} — index points at the wrong place",
+                "page at {} claims block id {} but was reached as {}, index points at the wrong place",
                 at.ib,
                 self.page.trailer_id(&buf, t),
                 at.bid
@@ -602,7 +602,7 @@ impl Pst {
         let found = crc32(&buf[..t]);
         if stored != found {
             self.warn(format!(
-                "page at {} fails its checksum (stored 0x{stored:08X}, computed 0x{found:08X}) — its contents are damaged",
+                "page at {} fails its checksum (stored 0x{stored:08X}, computed 0x{found:08X}), its contents are damaged",
                 at.ib
             ));
         }
@@ -624,14 +624,14 @@ impl Pst {
     ) {
         if depth > MAX_BTREE_DEPTH {
             self.warnings.push(format!(
-                "B-tree deeper than {MAX_BTREE_DEPTH} levels at offset {} — stopped",
+                "B-tree deeper than {MAX_BTREE_DEPTH} levels at offset {}, stopped",
                 at.ib
             ));
             return;
         }
         if !seen.insert(at.ib) {
             self.warnings
-                .push(format!("B-tree loops back to offset {} — stopped", at.ib));
+                .push(format!("B-tree loops back to offset {}, stopped", at.ib));
             return;
         }
         let page = match self.read_page(at) {
@@ -659,9 +659,9 @@ impl Pst {
             (page[f] as usize, page[f + 2] as usize, page[f + 3])
         };
         // cbEnt is a number off the page, so it cannot be trusted to be big enough for the
-        // entry it claims to describe. Every reader below indexes at a fixed offset — a
+        // entry it claims to describe. Every reader below indexes at a fixed offset, a
         // BTENTRY's BREF ends at 24, an NBTENTRY's nidParent at 28, a BBTENTRY's cRef at
-        // 20 — so a short slice runs off the end of itself. On a damaged file that is a
+        // 20, so a short slice runs off the end of itself. On a damaged file that is a
         // panic instead of a diagnosis, which is the one outcome this tool cannot have.
         // Widths are the id width times a small integer: a BTENTRY is a key and a BREF,
         // an NBTENTRY four ids, a BBTENTRY a BREF and two counts.
@@ -675,14 +675,14 @@ impl Pst {
         };
         if size < need {
             self.warnings.push(format!(
-                "page at {} declares {size}-byte entries, too small for the {need} bytes one holds — skipped",
+                "page at {} declares {size}-byte entries, too small for the {need} bytes one holds, skipped",
                 at.ib
             ));
             return;
         }
         if count * size > f {
             self.warnings.push(format!(
-                "page at {} declares {count} entries of {size} bytes, which does not fit — skipped",
+                "page at {} declares {count} entries of {size} bytes, which does not fit, skipped",
                 at.ib
             ));
             return;
@@ -706,8 +706,8 @@ impl Pst {
         let root = self.nbt_root;
         let page = self.page;
         self.walk(root, PTYPE_NBT, 0, &mut HashSet::new(), &mut |e| {
-            // NBTENTRY: nid — which Unicode widens to 8 bytes to match btkey, though it
-            // is a 4-byte value in both — then bidData, bidSub, and a nidParent that is
+            // NBTENTRY: nid, which Unicode widens to 8 bytes to match btkey, though it
+            // is a 4-byte value in both, then bidData, bidSub, and a nidParent that is
             // 4 bytes either way.
             let w = page.w();
             out.push(Node {
@@ -723,8 +723,8 @@ impl Pst {
     /// A block's bytes, decoded. The low bit of a BID is reserved, so it is masked off
     /// everywhere a block is looked up.
     ///
-    /// Only *data* blocks are obfuscated. Internal blocks — the ones holding lists of
-    /// other block ids — are stored in the clear, which is how a file with a "password"
+    /// Only *data* blocks are obfuscated. Internal blocks, the ones holding lists of
+    /// other block ids, are stored in the clear, which is how a file with a "password"
     /// can be navigated without one.
     pub fn block(&mut self, bid: u64) -> Result<Vec<u8>, String> {
         if self.bbt.is_none() {
@@ -783,7 +783,7 @@ impl Pst {
         let found_crc = crc32(&buf);
         if stored_crc != found_crc {
             self.warn(format!(
-                "block {bid} at offset {} fails its checksum (stored 0x{stored_crc:08X}, computed 0x{found_crc:08X}) — {} bytes of damaged data",
+                "block {bid} at offset {} fails its checksum (stored 0x{stored_crc:08X}, computed 0x{found_crc:08X}), {} bytes of damaged data",
                 b.ib, b.cb
             ));
         }
@@ -817,7 +817,7 @@ impl Pst {
     /// A node's data as the list of blocks it is made of.
     ///
     /// Anything over 8176 bytes does not fit in one block, so the node points at an
-    /// XBLOCK — a list of block ids — or an XXBLOCK, a list of XBLOCKs. Kept as a list
+    /// XBLOCK, a list of block ids, or an XXBLOCK, a list of XBLOCKs. Kept as a list
     /// rather than concatenated because heap ids address a specific block by number.
     pub fn node_blocks(&mut self, bid: u64) -> Result<Vec<Vec<u8>>, String> {
         if bid == 0 {
@@ -855,7 +855,7 @@ impl Pst {
 
     /// A node's subnode tree, flattened to local id -> the block holding its data.
     ///
-    /// Anything too big for a node's own heap — long message bodies, every attachment —
+    /// Anything too big for a node's own heap, long message bodies, every attachment -
     /// lives out here under its own local id.
     ///
     /// Two block types, distinguished by their level: leaves list the subnodes, and the
@@ -870,7 +870,7 @@ impl Pst {
         while let Some(b) = stack.pop() {
             if !seen.insert(b & !1) {
                 self.warnings
-                    .push(format!("subnode tree loops back to block {b} — stopped"));
+                    .push(format!("subnode tree loops back to block {b}, stopped"));
                 continue;
             }
             let blk = self.block(b)?;
@@ -915,7 +915,7 @@ impl Pst {
     /// ignoring the header's roots and every branch page entirely.
     ///
     /// This is the part `scanpst.exe` does not do. A torn index is the ordinary way a PST
-    /// dies — one bad page high in the tree orphans everything beneath it — but the leaves
+    /// dies, one bad page high in the tree orphans everything beneath it, but the leaves
     /// holding the actual node and block entries are spread across the whole file and are
     /// almost always still there. Pages sit at fixed offsets and carry a checksum, so they
     /// can be found without reference to anything that points at them, and a page that
@@ -1053,7 +1053,7 @@ impl Pst {
             r.superseded += v.len() - 1;
             // bid_sub breaks the tie when two copies name the same data block, and it has
             // to: a node whose subnode tree moved but whose data did not is a real and
-            // ordinary edit — a message gaining an attachment does exactly that. Ranking
+            // ordinary edit, a message gaining an attachment does exactly that. Ranking
             // by data block alone leaves those settled by file position, which says only
             // where the allocator found room, and on the test PST it picks the older
             // subnode tree for one node out of 129. Block ids come off a counter that only
@@ -1062,7 +1062,7 @@ impl Pst {
             v.sort_by_key(|(_, n)| (live.contains_key(&(n.bid_data & !1)), n.bid_data, n.bid_sub));
             let pick = v.last().unwrap().1;
 
-            // Duplicate copies of the *same* entry are the normal case and say nothing —
+            // Duplicate copies of the *same* entry are the normal case and say nothing -
             // a page was rewritten and the old one still lies there naming the same block.
             // Only copies that disagree about which block holds the node's data mean a
             // revision was chosen between, so that is what gets reported.
@@ -1093,7 +1093,7 @@ impl Pst {
     /// Rebuild the block index from the blocks themselves, using no index at all.
     ///
     /// The last resort, and the strongest one. Every block ends with a trailer holding its
-    /// own length, id and checksum, and blocks are padded to a fixed alignment — so the
+    /// own length, id and checksum, and blocks are padded to a fixed alignment, so the
     /// trailer of any block sits a fixed distance back from an aligned boundary. Testing
     /// every boundary finds every block whose bytes are still intact, whether or not
     /// anything in the file still points at it.
@@ -1196,7 +1196,7 @@ impl Pst {
 
     /// A block exactly as it sits on disk: data, padding and trailer, nothing decoded.
     ///
-    /// [`block`](Self::block) hands back the *contents* — deobfuscated and, on an OST,
+    /// [`block`](Self::block) hands back the *contents*, deobfuscated and, on an OST,
     /// inflated. Copying a block into a rebuilt file wants the opposite: the bytes
     /// untouched, so whatever encoding they carry keeps working without this ever having
     /// to understand it.
@@ -1217,14 +1217,14 @@ impl Pst {
     /// The file's own header bytes in the Unicode layout, for a rebuild to start from
     /// rather than invent.
     ///
-    /// Most of a header is fields a repair has no opinion about — the crypt method, the
+    /// Most of a header is fields a repair has no opinion about, the crypt method, the
     /// client version, the reserved runs. Copying it and overwriting only what moved is
     /// both less code and less to get wrong than building all 564 bytes from the spec.
     ///
     /// An ANSI header is 512 bytes and keeps almost nothing at the same offset, so there
     /// is no version of "copy it" that works: it is translated instead. Only four things
-    /// are worth carrying — the signature, the two platform bytes, the per-NID-type
-    /// counters and `dwUnique` — because everything else in it either moves with the
+    /// are worth carrying, the signature, the two platform bytes, the per-NID-type
+    /// counters and `dwUnique`, because everything else in it either moves with the
     /// rebuild or is a reserved run that MUST be zero anyway. This is the only shape a
     /// rebuild ever writes, which is why the conversion lands here rather than in every
     /// caller.
@@ -1260,7 +1260,7 @@ impl Pst {
 
     /// A Unicode 512-byte-page file: the one layout a repair copies block for block.
     ///
-    /// An ANSI file also has 512-byte pages and is emphatically not this — every id in it
+    /// An ANSI file also has 512-byte pages and is emphatically not this, every id in it
     /// is half as wide and both its trailers are a different shape, so its blocks can no
     /// more be copied into a Unicode file than a 4K OST's can. Both go the long way round
     /// through [`crate::convert`], a level up, from the data streams.
@@ -1424,7 +1424,7 @@ mod tests {
     ///
     /// This is the only ground truth available for recovery. An undamaged file carries the
     /// authoritative index *and* the freed pages the sweep reads, so the sweep can be run
-    /// against a file whose right answer is already known — and where the two disagree,
+    /// against a file whose right answer is already known, and where the two disagree,
     /// the sweep is simply wrong. It caught a real one: with the tie broken on the data
     /// block alone, one node in dist-list.pst came back with an older subnode tree.
     ///
@@ -1458,7 +1458,7 @@ mod tests {
         }
     }
 
-    /// A half-a-file must produce a diagnosis and whatever nodes survive — not a panic,
+    /// A half-a-file must produce a diagnosis and whatever nodes survive, not a panic,
     /// not a bare "file is corrupt", and not a progress bar. This is the whole pitch, so
     /// it gets a test from day one.
     #[test]
@@ -1511,7 +1511,7 @@ mod tests {
     }
 
     /// Every checksum in an undamaged file must verify. This is what stands behind the
-    /// CRC being the right algorithm over the right bytes — hundreds of real pages and
+    /// CRC being the right algorithm over the right bytes, hundreds of real pages and
     /// blocks written by Outlook, not a test vector.
     #[test]
     fn every_checksum_in_an_intact_file_verifies() {

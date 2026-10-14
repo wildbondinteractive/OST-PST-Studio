@@ -2,7 +2,7 @@
 // Copyright (c) 2026 pstfree contributors. Modified for OST/PST Studio; see
 // docs/IMPLEMENTATION_STATUS.md for the list of changes.
 
-//! Writing Compound File Binary Format — the container a `.msg` file lives in.
+//! Writing Compound File Binary Format, the container a `.msg` file lives in.
 //!
 //! A compound file is a filesystem inside a file: 512-byte sectors, a FAT chaining them
 //! together, and a directory of named streams and storages. Small streams are packed into
@@ -10,7 +10,7 @@
 //! property stream should not cost a whole sector.
 //!
 //! Only writing is implemented, and only what a `.msg` needs. Everything here is
-//! generated, so there is no hostile input to defend against — the risk is the opposite
+//! generated, so there is no hostile input to defend against, the risk is the opposite
 //! one, of producing a file that looks plausible and that nothing will open. The tests
 //! read the result back with an independent implementation.
 

@@ -104,8 +104,8 @@ impl Heap {
 
     /// The bytes of one heap allocation.
     ///
-    /// A heap id packs which block, and which allocation within it. Every block — the
-    /// first with its full header, the later ones with a short one — begins with the
+    /// A heap id packs which block, and which allocation within it. Every block, the
+    /// first with its full header, the later ones with a short one, begins with the
     /// offset of its own allocation map, so finding an item is the same two steps
     /// wherever it lives.
     pub fn item(&self, hid: u32) -> Result<&[u8], String> {
@@ -490,7 +490,7 @@ fn decode(ptype: u16, b: Vec<u8>) -> Value {
         0x001F => Value::Str(utf16le(&b)),
         // PtypString8 is in a code page. A property context reads its own
         // PidTagMessageCodepage first and does not come through here for these; a table
-        // row has no such column, so it gets windows-1252 — Latin-1 with the 0x80–0x9F
+        // row has no such column, so it gets windows-1252, Latin-1 with the 0x80–0x9F
         // range filled in, the curly quotes and dashes Word puts in a message. It matters:
         // an ANSI PST has no PtypString in it at all.
         0x001E => Value::Str(crate::html::decode(&b, None)),
@@ -664,7 +664,7 @@ impl Row {
 /// Read a table context: a grid of properties, one row per thing the table lists.
 ///
 /// Unlike a property context, a table stores every fixed-size value inline in the row
-/// however wide it is — a timestamp is eight bytes sitting in the row itself, not a
+/// however wide it is, a timestamp is eight bytes sitting in the row itself, not a
 /// reference to the heap. Only genuinely variable things go elsewhere.
 pub fn read_tc(pst: &mut Pst, bid_data: u64, bid_sub: u64) -> Result<Tc, String> {
     let heap = Heap::new(pst.node_blocks(bid_data)?)?;
@@ -867,8 +867,8 @@ fn utf16le(b: &[u8]) -> String {
 ///
 /// `PidTagBody` when the file has one; otherwise the HTML body with its markup taken off,
 /// which is the only body a great many messages have. The same caution as export applies
-/// and for the same reason: `PidTagHtml` does not always hold HTML — Outlook's own
-/// account-test message puts plain text in it — and running the markup stripper over
+/// and for the same reason: `PidTagHtml` does not always hold HTML, Outlook's own
+/// account-test message puts plain text in it, and running the markup stripper over
 /// prose would fold away the blank lines that are the only structure it has.
 pub fn body_text(pc: &Pc) -> Option<String> {
     if let Some(b) = pc.str(PID_BODY) {
@@ -896,13 +896,13 @@ pub fn body_text(pc: &Pc) -> Option<String> {
 /// One message that matched a search, with everything a list needs to show it.
 pub struct Hit {
     pub node: Node,
-    /// The folder it is in, as a node id — the caller has the names.
+    /// The folder it is in, as a node id, the caller has the names.
     pub folder: u32,
     pub subject: String,
     pub sender: String,
     pub date: String,
-    /// Which field matched, so a result with nothing visibly matching in it — the usual
-    /// case, since most hits are in the body — does not look like a bug.
+    /// Which field matched, so a result with nothing visibly matching in it, the usual
+    /// case, since most hits are in the body, does not look like a bug.
     pub matched: &'static str,
 }
 
@@ -911,7 +911,7 @@ pub struct Hit {
 /// The thing the $50 tools put on the box. It is a substring match over properties this
 /// layer already decodes, so it is a loop, not a feature: no index is built, nothing is
 /// cached, and a file that has just been recovered by sweeping is searched exactly like
-/// an intact one. Unreadable messages are skipped rather than aborting the search —
+/// an intact one. Unreadable messages are skipped rather than aborting the search -
 /// the one in the middle of a damaged file that will not parse is not a reason to
 /// withhold the four hundred that will.
 ///
@@ -1008,7 +1008,7 @@ mod tests {
     ///
     /// The check that matters is not that a label appears but that it is the *right* one.
     /// 0x8004 on the appointment resolves to PSETID_Appointment 0x820D, which MS-OXPROPS
-    /// calls PidLidAppointmentStartWhole — and the value stored under it is a time, half
+    /// calls PidLidAppointmentStartWhole, and the value stored under it is a time, half
     /// an hour before the 0x8005 that resolves to the matching End. A mapping off by one
     /// entry would still print something perfectly plausible and would not survive that.
     #[test]
@@ -1059,7 +1059,7 @@ mod tests {
             for s in &strings {
                 assert!(
                     !s.ends_with("\"\""),
-                    "{file}: {s:?} came back with an empty name — the offset into the \
+                    "{file}: {s:?} came back with an empty name, the offset into the \
                      string stream is wrong"
                 );
             }
@@ -1192,7 +1192,7 @@ mod tests {
 
     /// A folder's own hierarchy table must name the same children as the node B-tree's
     /// parent pointers. Two independent records of the same fact, which is exactly why
-    /// having both is worth the work — where they disagree, the file is damaged.
+    /// having both is worth the work, where they disagree, the file is damaged.
     #[test]
     fn hierarchy_tables_agree_with_the_parent_pointers() {
         for file in ["dist-list.pst", "example-2013.ost"] {

@@ -4,15 +4,15 @@
 
 //! An HTML body, reduced to the text a person wanted to read.
 //!
-//! A great many messages in a PST have an HTML body and no plain-text one — Outlook stops
+//! A great many messages in a PST have an HTML body and no plain-text one, Outlook stops
 //! writing the alternative the moment the message is composed as rich text. Until now the
 //! window said so and offered export instead, which is a fair answer for a reader that
 //! cannot render markup and a poor one for anybody who just wants to know what the
 //! message said.
 //!
 //! This is not a renderer and is not trying to be. Rendering HTML means hosting a browser
-//! control — a whole other runtime, on a machine where the point of the program is that
-//! there is nothing to install — or writing a layout engine, which is a larger project
+//! control, a whole other runtime, on a machine where the point of the program is that
+//! there is nothing to install, or writing a layout engine, which is a larger project
 //! than reading PST files. What it does instead is throw the markup away and keep the
 //! text, breaking lines where the markup says a line breaks.
 //!
@@ -26,7 +26,7 @@
 //! - Runs of blank lines collapse to one, because markup indentation becomes whitespace.
 //!
 //! What is knowingly lost: tables become their cells one after another, images leave
-//! nothing behind unless they carry `alt` text, and link targets are dropped — the text
+//! nothing behind unless they carry `alt` text, and link targets are dropped, the text
 //! of the link is kept, the URL is not. Export to `.eml` and open it in a mail client to
 //! see any of that; this is the reading pane, not the archive.
 
@@ -235,7 +235,7 @@ fn named(name: &str) -> Option<char> {
         "apos" => '\'',
         "nbsp" => '\u{A0}',
         "ndash" => '–',
-        "mdash" => '—',
+        "mdash" => '-',
         "lsquo" => '‘',
         "rsquo" => '’',
         "ldquo" => '“',
@@ -299,16 +299,16 @@ fn tidy(s: &str) -> String {
     out.trim().to_string()
 }
 
-/// Bytes out of a PST that are text in some code page — `PidTagHtml`, or any
-/// `PtypString8` property — as a `String`.
+/// Bytes out of a PST that are text in some code page, `PidTagHtml`, or any
+/// `PtypString8` property, as a `String`.
 ///
 /// `codepage` is what the message says it was written in, when it says:
 /// `PidTagInternetCodepage` for the HTML body, `PidTagMessageCodepage` for the narrow
 /// strings. UTF-8 is still tried first, because a declaration is often wrong in that one
-/// direction — an HTML body carries its own `<meta charset>` and the property beside it
-/// says 1252 — while Shift-JIS or GBK bytes are almost never valid UTF-8 by accident.
+/// direction, an HTML body carries its own `<meta charset>` and the property beside it
+/// says 1252, while Shift-JIS or GBK bytes are almost never valid UTF-8 by accident.
 /// Then the declared code page, decoded by Windows, which already knows every one of
-/// them; then windows-1252, which is iso-8859-1 with the 0x80–0x9F range filled in — the
+/// them; then windows-1252, which is iso-8859-1 with the 0x80–0x9F range filled in, the
 /// curly quotes and dashes Word puts in a message.
 pub fn decode(bytes: &[u8], codepage: Option<u32>) -> String {
     if let Ok(s) = std::str::from_utf8(bytes) {
@@ -350,7 +350,7 @@ fn windows(bytes: &[u8], cp: u32) -> Option<String> {
 fn cp1252(b: u8) -> char {
     const HIGH: [char; 32] = [
         '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8D}', 'Ž',
-        '\u{8F}', '\u{90}', '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\u{9D}',
+        '\u{8F}', '\u{90}', '‘', '’', '“', '”', '•', '–', '-', '˜', '™', 'š', '›', 'œ', '\u{9D}',
         'ž', 'Ÿ',
     ];
     match b {
