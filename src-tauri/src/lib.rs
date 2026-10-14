@@ -26,6 +26,7 @@ pub struct AppState {
     history: Mutex<History>,
     search_cancel: Mutex<HashMap<String, Arc<std::sync::atomic::AtomicBool>>>,
     data_dir: PathBuf,
+    cache_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -170,6 +171,23 @@ async fn open_mailbox(
     let id2 = id.clone();
     let app2 = app.clone();
     let path2 = path.clone();
+    let cache_dir = {
+        let s = state
+            .settings
+            .lock()
+            .map_err(|_| "settings are poisoned".to_string())?;
+        if s.use_scan_cache {
+            Some(
+                s.cache_dir
+                    .as_deref()
+                    .filter(|d| !d.trim().is_empty())
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| state.cache_dir.clone()),
+            )
+        } else {
+            None
+        }
+    };
     let opened = blocking(move || {
         let mut on = |done: u64, _: u64| {
             let _ = app2.emit(
@@ -178,7 +196,11 @@ async fn open_mailbox(
             );
             true
         };
-        let mb = Mailbox::open(Path::new(&path2), OpenOptions { salvage }, &mut on)?;
+        let mb = Mailbox::open(
+            Path::new(&path2),
+            OpenOptions { salvage, cache_dir },
+            &mut on,
+        )?;
         let info = mb.info().clone();
         let folders = mb.folders();
         Ok((mb, info, folders))
@@ -768,6 +790,27 @@ async fn export_structure_json(
     .await
 }
 
+fn effective_cache_dir(state: &AppState) -> PathBuf {
+    state
+        .settings
+        .lock()
+        .ok()
+        .and_then(|s| s.cache_dir.clone())
+        .filter(|d| !d.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| state.cache_dir.clone())
+}
+
+#[tauri::command]
+fn scan_cache_info(state: State<'_, AppState>) -> Result<ostpst_core::cache::CacheInfo, String> {
+    Ok(ostpst_core::cache::info(&effective_cache_dir(&state)))
+}
+
+#[tauri::command]
+fn clear_scan_cache(state: State<'_, AppState>) -> Result<usize, String> {
+    ostpst_core::cache::clear(&effective_cache_dir(&state))
+}
+
 /// Write text the window already holds (a report from the history) to a path the user
 /// chose in a save dialog.
 #[tauri::command]
@@ -809,6 +852,12 @@ pub fn run() {
                 .app_config_dir()
                 .unwrap_or_else(|_| std::env::temp_dir().join("ostpst-studio"));
             let _ = std::fs::create_dir_all(&data_dir);
+            let cache_dir = app
+                .path()
+                .app_cache_dir()
+                .unwrap_or_else(|_| data_dir.join("cache"))
+                .join("scans");
+            let _ = std::fs::create_dir_all(&cache_dir);
             let settings = Settings::load(&data_dir);
             let history = History::load(&data_dir);
             app.manage(AppState {
@@ -818,6 +867,7 @@ pub fn run() {
                 history: Mutex::new(history),
                 search_cancel: Mutex::new(HashMap::new()),
                 data_dir,
+                cache_dir,
             });
             Ok(())
         })
@@ -852,6 +902,8 @@ pub fn run() {
             app_info,
             export_structure_json,
             write_text_file,
+            scan_cache_info,
+            clear_scan_cache,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OST/PST Studio");

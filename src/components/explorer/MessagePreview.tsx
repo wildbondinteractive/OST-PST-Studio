@@ -105,6 +105,7 @@ export function MessagePreview({ mailboxId, nid, onOpenEmbedded }: { mailboxId: 
       <div className="shrink-0 border-b border-border px-4 pt-3 pb-2 selectable">
         <div className="flex items-start gap-2">
           <h2 className="min-w-0 flex-1 text-[15px] font-semibold leading-snug">{s.subject}</h2>
+          {s.recovered && <Badge tone="warning">recovered, not in the folder's table</Badge>}
           <Badge tone="neutral">{itemTypeLabel[s.itemType]}</Badge>
         </div>
         <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">

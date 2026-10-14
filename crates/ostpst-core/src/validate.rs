@@ -46,7 +46,14 @@ pub fn validate_output(path: &Path, expected: &Expected, on: crate::Progress) ->
         });
     };
 
-    let mut mb = match Mailbox::open(path, OpenOptions { salvage: false }, &mut crate::silent()) {
+    let mut mb = match Mailbox::open(
+        path,
+        OpenOptions {
+            salvage: false,
+            cache_dir: None,
+        },
+        &mut crate::silent(),
+    ) {
         Ok(m) => {
             push(
                 "Reopen",

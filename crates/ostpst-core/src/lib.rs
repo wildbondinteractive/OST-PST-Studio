@@ -38,6 +38,7 @@ pub fn silent() -> impl FnMut(u64, u64) -> bool {
 }
 
 pub mod amap;
+pub mod cache;
 pub mod cfbf;
 pub mod convert;
 pub mod crypt;

@@ -189,6 +189,10 @@ pub struct MessageSummary {
     /// The summary came from the folder's contents table rather than the message's
     /// own properties. Cheaper, and the fields a table does not carry are blank.
     pub from_table: bool,
+    /// The index holds this message but the folder's own contents table does not list
+    /// it. On a file opened in salvage mode that is a deleted item the sweep brought
+    /// back; on an intact file it is a disagreement worth looking at.
+    pub recovered: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

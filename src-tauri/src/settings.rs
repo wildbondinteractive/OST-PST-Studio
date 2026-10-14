@@ -23,6 +23,10 @@ pub struct Settings {
     pub remember_recent_files: bool,
     pub check_for_updates: bool,
     pub message_page_size: u32,
+    /// Keep saved scans so large or damaged files reopen without a new sweep.
+    pub use_scan_cache: bool,
+    /// Where saved scans live; empty means the application's cache directory.
+    pub cache_dir: Option<String>,
 }
 
 impl Default for Settings {
@@ -41,6 +45,8 @@ impl Default for Settings {
             remember_recent_files: true,
             check_for_updates: false,
             message_page_size: 200,
+            use_scan_cache: true,
+            cache_dir: None,
         }
     }
 }

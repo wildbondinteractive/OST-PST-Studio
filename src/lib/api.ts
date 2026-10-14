@@ -35,7 +35,7 @@ export type ItemType =
 export interface MessageSummary {
   nid: number; folder: number; subject: string; senderName: string; senderEmail: string;
   displayTo: string; dateMs: number | null; size: number; hasAttachments: boolean;
-  importance: number; read: boolean; itemType: ItemType; messageClass: string; fromTable: boolean;
+  importance: number; read: boolean; itemType: ItemType; messageClass: string; fromTable: boolean; recovered: boolean;
 }
 export interface MessagePage { folder: number; offset: number; total: number; items: MessageSummary[]; unreadable: number }
 export type SortKey = "date" | "sender" | "subject" | "size";
@@ -123,8 +123,9 @@ export interface Settings {
   theme: "system" | "light" | "dark"; defaultOutputDir: string | null; defaultExportFormat: ExportFormat;
   collision: Collision; maxConcurrentJobs: number; writeAllocationMaps: boolean; validateAfterWrite: boolean;
   blockRemoteContent: boolean; showHtmlBodies: boolean; logVerbosity: string; rememberRecentFiles: boolean;
-  checkForUpdates: boolean; messagePageSize: number;
+  checkForUpdates: boolean; messagePageSize: number; useScanCache: boolean; cacheDir: string | null;
 }
+export interface CacheInfo { dir: string; entries: number; bytes: number }
 export interface RecentFile {
   path: string; fileName: string; sizeBytes: number; isOst: boolean; health: HealthStatus;
   folderCount: number; messageCount: number; openedMs: number;
@@ -174,6 +175,8 @@ export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
   exportStructureJson: (id: string, path: string) => invoke<void>("export_structure_json", { id, path }),
   writeTextFile: (path: string, content: string) => invoke<void>("write_text_file", { path, content }),
+  scanCacheInfo: () => invoke<CacheInfo>("scan_cache_info"),
+  clearScanCache: () => invoke<number>("clear_scan_cache"),
 
   onJobUpdate: (cb: (r: JobRecord) => void): Promise<UnlistenFn> => listen<JobRecord>("job://update", (e) => cb(e.payload)),
   onJobProgress: (cb: (r: JobRecord) => void): Promise<UnlistenFn> => listen<JobRecord>("job://progress", (e) => cb(e.payload)),

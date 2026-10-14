@@ -38,8 +38,8 @@ what is verified, and what is next. Pair it with `docs/TEST_RESULTS.md`.
 | Rich preview (sandboxed HTML, remote content blocked with per-message override, images and text attachments, SHA-256) | Done |
 | Activity history and reports | Done |
 | Repair and recovery workflows (verify, salvage mode, repair to new file) | Done |
-| Regression tests | Upstream suite carried over (68) plus new tests; 83 total |
-| Saved search presets | Not started |
+| Regression tests | Upstream suite carried over (68) plus new tests; 85 total |
+| Saved search presets | Done (local storage, per machine) |
 | Keyboard navigation of the message list (arrows, Home/End, Ctrl+A, Enter) | Done |
 
 ## Phase 3: advanced capabilities
@@ -50,9 +50,9 @@ what is verified, and what is next. Pair it with `docs/TEST_RESULTS.md`.
 | Contacts and calendar handling | Partial | Fields decoded for preview, CSV, VCF, ICS; no dedicated contacts/calendar grid views yet |
 | PST splitting | Not started | Needs a selective writer: folder tables (hierarchy and contents TCs) and counts must be rebuilt for the subset; splitting at node level alone leaves TC rows pointing at missing nids |
 | Export selection to a new PST | Not started | Same prerequisite as splitting |
-| Save and resume scans | Not started | Plan: serialise `nodes`, `blocks`, folder tree and recovery info keyed on path, size, mtime and header CRCs |
+| Save and resume scans | Done | `cache.rs`: nodes, blocks and recovery info as JSON in the app cache dir, keyed on path, size, mtime and both header CRCs; salvage is part of the key; settings to disable, relocate and clear. Restart of a partial PST write is deliberately not offered |
 | Cancellation and restart recovery | Cancellation done at every phase; restart of a partial PST write is deliberately not offered (writer has no journal) |
-| Forensic features | Partial | Raw properties with names, creator and modifier names, sent-on-behalf-of, transport headers, stale-revision listing. Not done: per-item "recovered/deleted" labels, orphaned-node browsing |
+| Forensic features | Partial | Raw properties with names, creator and modifier names, sent-on-behalf-of, transport headers, stale-revision listing. Per-item "recovered" label for messages the index holds but the folder table does not list (salvage mode surfaces deleted items this way). Not done: orphaned-node browsing |
 | Large-file performance | Partial | Streaming writes, bounded memory, contents-table listings. Not measured above the 16 MB fixture |
 | Installer and portable packaging | Done via Tauri bundler; portable is the bare `ostpst-studio.exe` plus WebView2 runtime | |
 
@@ -91,5 +91,5 @@ For UI checks without a mouse: launch the app with
 is the zustand store.
 
 Suggested next steps, in order: (1) run the manual Outlook check and record it;
-(2) selective PST writer (unlocks splitting and PST export of selections); (3) scan
-cache; (4) contacts and calendar grid views; (5) PDF export; (6) saved search presets.
+(2) selective PST writer (unlocks splitting and PST export of selections); (3) contacts
+and calendar grid views; (4) PDF export; (5) orphaned-node browsing.

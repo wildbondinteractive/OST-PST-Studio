@@ -52,9 +52,12 @@ pub struct Mailbox {
 }
 
 /// How to open: follow the header's index, or sweep regardless.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct OpenOptions {
     pub salvage: bool,
+    /// Where saved scans live. `None` disables the cache. An entry is reused only when
+    /// the file's path, size, modification time and header checksums all match.
+    pub cache_dir: Option<PathBuf>,
 }
 
 impl Mailbox {
@@ -70,9 +73,45 @@ impl Mailbox {
             return Err(crate::CANCELLED.into());
         }
 
-        let (nodes, blocks, recovery, index_source) = build_index(&mut pst, opts.salvage);
+        // A saved scan, when there is one for exactly this file, replaces the walk (or
+        // the sweep and carve, which is where the time goes on a damaged file).
+        let identity = opts
+            .cache_dir
+            .as_deref()
+            .and_then(|_| crate::cache::FileIdentity::of(path).ok());
+        let cached = match (&opts.cache_dir, &identity) {
+            (Some(dir), Some(id)) => crate::cache::load(dir, id, opts.salvage),
+            _ => None,
+        };
+        let from_cache = cached.is_some();
+        let (nodes, blocks, recovery, index_source) = match cached {
+            Some(c) => {
+                if c.index_source == IndexSource::Recovered {
+                    pst.adopt(&c.blocks);
+                }
+                (c.nodes, c.blocks, c.recovery, c.index_source)
+            }
+            None => build_index(&mut pst, opts.salvage),
+        };
         if !on(1, 0) {
             return Err(crate::CANCELLED.into());
+        }
+        if let (false, Some(dir), Some(id)) = (from_cache, &opts.cache_dir, identity) {
+            // Best effort: a cache that cannot be written costs a slower reopen, nothing
+            // else, so the error is not worth failing the open for.
+            let _ = crate::cache::save(
+                dir,
+                &crate::cache::ScanCache {
+                    version: 1,
+                    identity: id,
+                    salvage: opts.salvage,
+                    index_source,
+                    recovery: recovery.clone(),
+                    nodes: nodes.clone(),
+                    blocks: blocks.clone(),
+                    saved_ms: now_ms(),
+                },
+            );
         }
 
         let by_nid: HashMap<u32, Node> = nodes.iter().map(|n| (n.nid, *n)).collect();
@@ -501,9 +540,15 @@ impl Mailbox {
         // messages the index also knows, and anything it does not list is read the slow
         // way, so a recovered file lists everything the sweep found.
         let mut rows: HashMap<u32, BTreeMap<u16, Value>> = HashMap::new();
+        let mut have_table = false;
         let table_nid = (folder & !0x1F) | NID_TYPE_CONTENTS_TABLE;
+        // On a recovered index the table's rows may come from a carved block that is
+        // not the revision the index expected, so they are used only to tell live
+        // messages from swept ones; every row is read from its own properties.
+        let trust_table = self.info.index_source == IndexSource::Header;
         if let Some(t) = self.by_nid.get(&table_nid).copied() {
             if let Ok(tc) = read_tc(&mut self.pst, t.bid_data, t.bid_sub) {
+                have_table = true;
                 for r in tc.rows {
                     rows.insert(r.id, r.props);
                 }
@@ -516,12 +561,17 @@ impl Mailbox {
             let Some(node) = self.by_nid.get(&nid).copied() else {
                 continue;
             };
-            if let Some(props) = rows.get(&nid) {
+            if let Some(props) = rows.get(&nid).filter(|_| trust_table) {
                 // A table row has no sender e-mail or display-to in most files, and that
-                // is fine for a list. The subject is the one thing worth insisting on.
+                // is fine for a list. The subject is the one thing worth insisting on,
+                // and a row whose text holds control characters is a row from a block
+                // that is not what the table thinks it is, so it is not used either.
                 if props.contains_key(&PID_SUBJECT) || props.contains_key(&PID_MESSAGE_CLASS) {
-                    out.push(summary_from_props(nid, folder, props, true));
-                    continue;
+                    let s = summary_from_props(nid, folder, props, true);
+                    if !has_control_chars(&s.subject) && !has_control_chars(&s.sender_name) {
+                        out.push(s);
+                        continue;
+                    }
                 }
             }
             match read_node_pc(&mut self.pst, &node) {
@@ -530,6 +580,7 @@ impl Mailbox {
                     if !s.has_attachments {
                         s.has_attachments = has_attachment_subnode(&mut self.pst, &node);
                     }
+                    s.recovered = have_table && !rows.contains_key(&nid);
                     out.push(s);
                 }
                 Err(_) => {
@@ -549,6 +600,7 @@ impl Mailbox {
                         item_type: ItemType::Other,
                         message_class: String::new(),
                         from_table: false,
+                        recovered: have_table && !rows.contains_key(&nid),
                     });
                 }
             }
@@ -1013,6 +1065,7 @@ impl Mailbox {
             &self.path,
             OpenOptions {
                 salvage: self.info.index_source == IndexSource::Recovered,
+                cache_dir: None,
             },
             on,
         )
@@ -1077,6 +1130,12 @@ fn build_index(
             .collect();
     }
     (nodes, blocks, Some(info), IndexSource::Recovered)
+}
+
+/// Text that is not text: anything below a space other than tab, newline and return.
+fn has_control_chars(s: &str) -> bool {
+    s.chars()
+        .any(|c| (c as u32) < 0x20 && !matches!(c, '\t' | '\n' | '\r'))
 }
 
 fn has_attachment_subnode(pst: &mut Pst, node: &Node) -> bool {
@@ -1159,6 +1218,7 @@ fn summary_from_props(
         item_type: item_type(&class),
         message_class: class,
         from_table,
+        recovered: false,
     }
 }
 
@@ -1827,6 +1887,59 @@ mod tests {
             &mut |_, _| false,
         );
         assert!(r.cancelled);
+    }
+
+    /// Upstream's bake-off found that sweeping the OST returns seven messages where the
+    /// intact index has three: four deleted items whose entries the index dropped and
+    /// the freed pages kept. Those are exactly the ones the folder tables do not list,
+    /// and they must be labelled as such rather than shown as ordinary mail.
+    #[test]
+    fn salvage_mode_labels_swept_deleted_items_as_recovered() {
+        let p = PathBuf::from("../../fixtures/data/example-2013.ost");
+        if !p.exists() {
+            return;
+        }
+        let mut intact = Mailbox::open(&p, OpenOptions::default(), &mut crate::silent()).unwrap();
+        let mut salvaged = Mailbox::open(
+            &p,
+            OpenOptions {
+                salvage: true,
+                cache_dir: None,
+            },
+            &mut crate::silent(),
+        )
+        .unwrap();
+        assert_eq!(salvaged.info().index_source, IndexSource::Recovered);
+        assert!(salvaged.info().message_count > intact.info().message_count);
+        let folders: Vec<u32> = salvaged.folders().iter().map(|f| f.nid).collect();
+        let mut recovered = 0;
+        let mut plain = 0;
+        for f in folders {
+            for m in salvaged.all_summaries(f) {
+                if m.recovered {
+                    recovered += 1;
+                } else {
+                    plain += 1;
+                }
+            }
+        }
+        assert_eq!(
+            plain,
+            intact.info().message_count,
+            "the live messages are still plain"
+        );
+        assert_eq!(
+            recovered,
+            salvaged.info().message_count - intact.info().message_count,
+            "every extra message is labelled recovered"
+        );
+        // And on the intact file nothing is labelled.
+        let inbox = intact
+            .folders()
+            .into_iter()
+            .find(|f| f.name == "Inbox")
+            .unwrap();
+        assert!(intact.all_summaries(inbox.nid).iter().all(|m| !m.recovered));
     }
 
     #[test]

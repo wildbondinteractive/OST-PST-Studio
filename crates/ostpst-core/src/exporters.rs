@@ -900,6 +900,7 @@ mod tests {
                 item_type: ItemType::Mail,
                 message_class: "IPM.Note".into(),
                 from_table: false,
+                recovered: false,
             },
             recipients: vec![],
             sender_representing_name: String::new(),

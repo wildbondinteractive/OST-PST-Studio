@@ -156,7 +156,14 @@ fn open(path: &str, salvage: bool, quiet: bool) -> Mailbox {
         }
         true
     };
-    match Mailbox::open(Path::new(path), OpenOptions { salvage }, &mut on) {
+    match Mailbox::open(
+        Path::new(path),
+        OpenOptions {
+            salvage,
+            cache_dir: None,
+        },
+        &mut on,
+    ) {
         Ok(m) => m,
         Err(e) => die(&e, 1),
     }

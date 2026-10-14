@@ -179,6 +179,7 @@ pub fn run_convert(id: &str, kind: JobKind, opts: &ConvertOptions, on: Reporter)
         src,
         OpenOptions {
             salvage: opts.salvage,
+            cache_dir: None,
         },
         &mut t.engine(),
     ) {
@@ -367,6 +368,7 @@ pub fn run_export(id: &str, opts: &ExportOptions, on: Reporter) -> JobReport {
         src,
         OpenOptions {
             salvage: opts.salvage,
+            cache_dir: None,
         },
         &mut t.engine(),
     ) {

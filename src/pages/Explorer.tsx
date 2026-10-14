@@ -410,8 +410,33 @@ export function Explorer() {
   );
 }
 
+interface Preset {
+  name: string;
+  query: SearchQuery;
+}
+
+function loadPresets(): Preset[] {
+  try {
+    return JSON.parse(localStorage.getItem("search.presets") ?? "[]") as Preset[];
+  } catch {
+    return [];
+  }
+}
+
 function SearchFilters({ query, onChange, onRun, onRunHere, folderName }: { query: SearchQuery; onChange: (q: SearchQuery) => void; onRun: () => void; onRunHere: () => void; folderName?: string }) {
   const set = (patch: Partial<SearchQuery>) => onChange({ ...query, ...patch });
+  const [presets, setPresets] = useState<Preset[]>(loadPresets);
+  const [presetName, setPresetName] = useState("");
+  const savePresets = (p: Preset[]) => {
+    setPresets(p);
+    localStorage.setItem("search.presets", JSON.stringify(p));
+  };
+  const savePreset = () => {
+    const name = presetName.trim();
+    if (!name) return;
+    savePresets([...presets.filter((p) => p.name !== name), { name, query: { ...query, folder: null } }]);
+    setPresetName("");
+  };
   const toDate = (ms: number | null) => (ms ? new Date(ms).toISOString().slice(0, 10) : "");
   const fromDate = (s: string, endOfDay: boolean) => (s ? Date.parse(s + (endOfDay ? "T23:59:59Z" : "T00:00:00Z")) : null);
   const fields: [keyof SearchQuery, string][] = [["inSubject", "Subject"], ["inSender", "Sender"], ["inRecipients", "Recipients"], ["inBody", "Body"], ["inAttachmentNames", "Attachment names"]];
@@ -475,6 +500,24 @@ function SearchFilters({ query, onChange, onRun, onRunHere, folderName }: { quer
         <div className="col-span-2 flex items-end justify-end gap-2">
           <Button size="sm" onClick={onRunHere} disabled={!folderName}>Search in {folderName ?? "folder"}</Button>
           <Button size="sm" variant="primary" onClick={onRun}>Search whole mailbox</Button>
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border pt-2 text-xs">
+        <span className="text-fg-subtle">Presets</span>
+        {presets.length === 0 && <span className="text-fg-subtle">none saved yet</span>}
+        {presets.map((p) => (
+          <span key={p.name} className="flex items-center overflow-hidden rounded-md border border-border">
+            <button className="px-2 py-0.5 hover:bg-surface-3" onClick={() => onChange({ ...p.query, folder: query.folder })} title="Load this preset">
+              {p.name}
+            </button>
+            <button className="border-l border-border px-1.5 py-0.5 text-fg-subtle hover:bg-surface-3 hover:text-danger" onClick={() => savePresets(presets.filter((x) => x.name !== p.name))} aria-label={`Delete preset ${p.name}`}>
+              <X size={11} />
+            </button>
+          </span>
+        ))}
+        <div className="ml-auto flex items-center gap-1">
+          <Input className="h-6 w-40 text-xs" placeholder="Save current as…" value={presetName} onChange={(e) => setPresetName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && savePreset()} />
+          <Button size="sm" variant="ghost" onClick={savePreset} disabled={!presetName.trim()}>Save</Button>
         </div>
       </div>
     </div>

@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { FolderOpen, Info, Shield, Trash2 } from "lucide-react";
-import { api, errorMessage, type AppInfo, type Collision, type ExportFormat, type Settings } from "@/lib/api";
+import { api, errorMessage, type AppInfo, type CacheInfo, type Collision, type ExportFormat, type Settings } from "@/lib/api";
+import { humanBytes } from "@/lib/utils";
 import { useApp } from "@/lib/store";
 import { Button, Card, CardHeader, Input, PageHeader, Select, Switch } from "@/components/ui";
 
@@ -14,6 +15,11 @@ export function SettingsPage() {
   const [draft, setDraft] = useState<Settings | null>(settings);
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [showLicense, setShowLicense] = useState(false);
+  const [cache, setCache] = useState<CacheInfo | null>(null);
+  const refreshCache = () => api.scanCacheInfo().then(setCache).catch(() => setCache(null));
+  useEffect(() => {
+    void refreshCache();
+  }, []);
 
   useEffect(() => setDraft(settings), [settings]);
   useEffect(() => {
@@ -82,6 +88,30 @@ export function SettingsPage() {
             </Row>
             <Row title="Maximum concurrent jobs" desc="For batch operations.">
               <Input type="number" min={1} max={8} value={draft.maxConcurrentJobs} onChange={(e) => set({ maxConcurrentJobs: Math.max(1, Math.min(8, Number(e.target.value) || 1)) })} />
+            </Row>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Saved scans" description="The node and block index of each opened file, so a large or damaged mailbox reopens without repeating the sweep. Structure only, never message contents. An entry is reused only when the file's path, size, modification time and header checksums all match." />
+          <div className="divide-y divide-border">
+            <Row title="Keep saved scans">
+              <div className="flex justify-end"><Switch checked={draft.useScanCache} onCheckedChange={(v) => set({ useScanCache: v })} /></div>
+            </Row>
+            <Row title="Cache location" desc={cache ? `${cache.entries} saved scan(s), ${humanBytes(cache.bytes)}` : "Default: the application's cache folder."}>
+              <div className="flex gap-1">
+                <Input value={draft.cacheDir ?? ""} onChange={(e) => set({ cacheDir: e.target.value || null })} placeholder={cache?.dir ?? "Application cache folder"} />
+                <Button size="icon" aria-label="Browse" onClick={async () => { const d = await open({ directory: true }); if (typeof d === "string") { set({ cacheDir: d }); setTimeout(refreshCache, 300); } }}>
+                  <FolderOpen size={14} />
+                </Button>
+              </div>
+            </Row>
+            <Row title="Clear saved scans" desc="Files reopen with a fresh scan afterwards.">
+              <div className="flex justify-end">
+                <Button size="sm" onClick={async () => { try { const n = await api.clearScanCache(); toast({ tone: "success", title: `${n} saved scan(s) removed` }); void refreshCache(); } catch (e) { toast({ tone: "danger", title: "Could not clear the cache", detail: errorMessage(e) }); } }}>
+                  <Trash2 size={13} /> Clear
+                </Button>
+              </div>
             </Row>
           </div>
         </Card>

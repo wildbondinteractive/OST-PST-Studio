@@ -12,7 +12,7 @@ it; recorded when done).
 
 | Suite | Count | Result |
 |---|---|---|
-| `ostpst-core` unit tests (upstream 60 + new 15) | 75 | PASS |
+| `ostpst-core` unit tests (upstream 60 + new 17) | 77 | PASS |
 | `ostpst-core` ANSI PST fixture tests | 7 | PASS |
 | `ostpst-core` fuzz (8 rounds per fixture, sector-aligned damage) | 1 | PASS, no panic, no hang |
 | `cargo clippy --workspace --all-targets -- -D warnings` | | PASS (clean) |
@@ -21,7 +21,8 @@ it; recorded when done).
 New tests beyond upstream: `fsutil` (name sanitisation, collision policy, temp-file
 commit, sizes), `mailbox` (open PST and OST, folder tree and kinds, listing from the
 contents table, message detail, search by subject and body, filter-only search, search
-cancellation, torn file opens as recovered), `amap` (map recurrence arithmetic; a
+cancellation, torn file opens as recovered, salvage mode labels swept deleted items as
+recovered), `cache` (entry reused only for the identical file), `amap` (map recurrence arithmetic; a
 rebuilt PST gets valid maps that cover every block and page, a valid DList, and reopens
 with no warnings), `exporters` (CSV quoting, iCalendar times and folding, HTML export
 sandboxing).
@@ -49,7 +50,7 @@ message counts, every folder readable, every message readable).
 | `ostpst repair dist-list.pst out.pst` | PASS |
 | `ostpst verify dist-list.pst` (checksums, sweep, carve, table cross-check) | PASS, "the two agree", 0 disagreements |
 | Open a PST with both B-tree roots zeroed (torn) | PASS, opens as Recovered, 4 messages, 29 stale nodes listed |
-| Open the OST in salvage mode | PASS |
+| Open the OST in salvage mode | PASS, 9 messages (3 live, 6 swept) with the swept ones labelled recovered |
 | Export whole mailbox as EML (CLI and GUI) | PASS, 3 files in mirrored folders |
 | Export MSG / MBOX / HTML / TXT / CSV / JSON | PASS (files written; MSG not opened in Outlook) |
 | Export VCF from dist-list.pst Contacts | PASS (1 contact written, distribution list skipped and counted) |

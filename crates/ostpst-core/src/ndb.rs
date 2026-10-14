@@ -257,7 +257,7 @@ pub struct Bref {
 }
 
 /// One entry in the node B-tree. `nid` is the handle the layers above use.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Node {
     pub nid: u32,
     pub bid_data: u64,
@@ -319,7 +319,7 @@ pub struct Sub {
 }
 
 /// One entry in the block B-tree: where a block's bytes are and how many there are.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Block {
     pub bid: u64,
     pub ib: u64,

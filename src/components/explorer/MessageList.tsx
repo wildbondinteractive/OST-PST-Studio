@@ -192,6 +192,7 @@ export function MessageList({
                       <span className="min-w-0 flex-1 truncate text-[12px] font-normal text-fg-muted">
                         {isMailLike(m.itemType) ? m.subject : itemTypeLabel[m.itemType] + (m.senderName ? ` · ${m.senderName}` : "")}
                       </span>
+                      {m.recovered && <span className="shrink-0 rounded bg-warning-soft px-1 text-[10px] font-medium text-warning">recovered</span>}
                       {m.hasAttachments && <Paperclip size={12} className="shrink-0 text-fg-muted" />}
                       {m.size > 0 && <span className="shrink-0 text-[11px] font-normal text-fg-subtle">{humanBytes(m.size)}</span>}
                     </div>
