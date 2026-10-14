@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+/*
+  Design tokens. Fluent-leaning: a quiet neutral surface scale, one accent, no gradients.
+  Light values on :root, dark values under .dark (the app sets the class from the theme
+  setting or the system preference).
+*/
+@theme {
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+
+  --color-bg: var(--bg);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-selection: var(--selection);
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+}
+
+:root {
+  --bg: #f3f3f3;
+  --bg-subtle: #ebebeb;
+  --surface: #ffffff;
+  --surface-2: #f9f9f9;
+  --surface-3: #f0f0f0;
+  --border: #e3e3e3;
+  --border-strong: #c9c9c9;
+  --fg: #1b1b1b;
+  --fg-muted: #5c5c5c;
+  --fg-subtle: #8a8a8a;
+  --accent: #0f6cbd;
+  --accent-hover: #115ea3;
+  --accent-fg: #ffffff;
+  --accent-soft: #e6f0fa;
+  --success: #0f7b0f;
+  --success-soft: #e7f4e7;
+  --warning: #9d5d00;
+  --warning-soft: #fff4d6;
+  --danger: #c42b1c;
+  --danger-soft: #fde7e5;
+  --selection: #dbe9f8;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #1f1f1f;
+  --bg-subtle: #191919;
+  --surface: #272727;
+  --surface-2: #2c2c2c;
+  --surface-3: #333333;
+  --border: #363636;
+  --border-strong: #4a4a4a;
+  --fg: #f3f3f3;
+  --fg-muted: #b5b5b5;
+  --fg-subtle: #8a8a8a;
+  --accent: #4cc2ff;
+  --accent-hover: #6fcdff;
+  --accent-fg: #0b1a24;
+  --accent-soft: #1f3645;
+  --success: #6ccb5f;
+  --success-soft: #1f3320;
+  --warning: #fce100;
+  --warning-soft: #3a3410;
+  --danger: #ff99a4;
+  --danger-soft: #3d1f22;
+  --selection: #2b4256;
+  color-scheme: dark;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+.selectable, .selectable * {
+  user-select: text;
+}
+
+/* Scrollbars: thin, unobtrusive, visible on hover. */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: var(--fg-subtle); background-clip: padding-box; border: 2px solid transparent; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* Focus rings that follow the accent. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+/* Native title bar drag region, when used. */
+[data-tauri-drag-region] { -webkit-app-region: drag; }
+
+.pane-resizer {
+  width: 5px;
+  cursor: col-resize;
+  flex: 0 0 auto;
+  background: transparent;
+  transition: background 120ms;
+}
+.pane-resizer:hover, .pane-resizer.active { background: var(--accent); opacity: 0.6; }
+
+@keyframes shimmer {
+  from { background-position: -200px 0; }
+  to { background-position: calc(200px + 100%) 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-3) 0px, var(--surface-2) 100px, var(--surface-3) 200px);
+  background-size: 200px 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 4px;
+}
+
+@keyframes indeterminate {
+  0% { left: -40%; width: 40%; }
+  100% { left: 100%; width: 40%; }
+}
+.progress-indeterminate::after {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0;
+  background: var(--accent);
+  border-radius: 999px;
+  animation: indeterminate 1.3s infinite ease-in-out;
+}
+
+.ring-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-2);
+  z-index: 1;
+}

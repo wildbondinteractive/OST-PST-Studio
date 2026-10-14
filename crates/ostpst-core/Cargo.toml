@@ -1,0 +1,17 @@
+[package]
+name = "ostpst-core"
+description = "OST/PST Studio engine: read, search, convert, repair and export Outlook PST/OST files. Built on pstfree (MIT)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "ostpst_core"
+path = "src/lib.rs"
+
+[dependencies]
+miniz_oxide = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Storage_FileSystem"] }

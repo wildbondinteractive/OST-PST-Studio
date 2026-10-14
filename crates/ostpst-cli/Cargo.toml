@@ -1,0 +1,16 @@
+[package]
+name = "ostpst-cli"
+description = "OST/PST Studio command-line interface for technicians and automation."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "ostpst"
+path = "src/main.rs"
+
+[dependencies]
+ostpst-core = { path = "../ostpst-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }

@@ -1,0 +1,28 @@
+# Build output
+target/
+node_modules/
+dist/
+dist-ssr/
+src-tauri/gen/schemas/
+*.local
+
+# Real mailboxes contain real mail. Test fixtures are fetched, never committed,
+# and nothing exported from one belongs in the repo either.
+fixtures/data/
+fixtures/out/
+tests/out/
+*.pst
+*.ost
+*.eml
+*.msg
+*.mbox
+*.partial
+
+# Editor and OS noise
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+__pycache__/
