@@ -5,7 +5,7 @@ import type { ItemType, MessageSummary, SortKey } from "@/lib/api";
 import { cn, formatDate, humanBytes } from "@/lib/utils";
 import { EmptyState, Spinner } from "@/components/ui";
 
-const ROW = 56;
+const ROW = 54;
 
 const TYPE_ICON: Partial<Record<ItemType, React.ComponentType<{ size?: number; className?: string }>>> = {
   appointment: Calendar,
@@ -121,7 +121,7 @@ export function MessageList({
 
   const Header = ({ k, label, className }: { k: SortKey; label: string; className?: string }) => (
     <button
-      className={cn("flex items-center gap-1 text-[11px] font-medium text-fg-muted hover:text-fg", className)}
+      className={cn("flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-medium hover:bg-surface-3", sort.sort === k ? "bg-surface-3 text-fg" : "text-fg-muted", className)}
       onClick={() => onSortChange({ sort: k, descending: sort.sort === k ? !sort.descending : k === "date" })}
     >
       {label}
@@ -131,11 +131,12 @@ export function MessageList({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-8 shrink-0 items-center gap-3 border-b border-border bg-surface-2 px-3">
-        <Header k="sender" label="From" className="w-40" />
-        <Header k="subject" label="Subject" className="flex-1" />
-        <Header k="size" label="Size" className="w-16 justify-end" />
-        <Header k="date" label="Date" className="w-20 justify-end" />
+      <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border bg-surface-2 px-2">
+        <span className="mr-1 text-[11px] text-fg-subtle">Sort</span>
+        <Header k="date" label="Date" />
+        <Header k="sender" label="From" />
+        <Header k="subject" label="Subject" />
+        <Header k="size" label="Size" />
       </div>
       {items.length === 0 && !loading ? (
         <EmptyState compact icon={<Mail size={20} />} title={emptyTitle ?? "No messages"} description={emptyDescription ?? "This folder holds no messages the index can see."} />
@@ -170,28 +171,25 @@ export function MessageList({
                   style={{ top: v.start, height: v.size }}
                 >
                   <span className={cn("w-1 shrink-0 self-stretch rounded-full", !m.read ? "bg-accent" : "bg-transparent")} />
-                  <div className="w-40 min-w-0 shrink-0">
-                    <div className="truncate text-[13px]" title={m.senderEmail || m.senderName}>{m.senderName || m.senderEmail || <span className="text-fg-subtle">Unknown sender</span>}</div>
-                    <div className="truncate text-[11px] font-normal text-fg-subtle">{m.displayTo ? `To: ${m.displayTo}` : m.senderEmail}</div>
-                  </div>
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 py-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-[13px]" title={m.senderEmail || m.senderName}>
+                        {m.senderName || m.senderEmail || <span className="text-fg-subtle">Unknown sender</span>}
+                      </span>
+                      <span className="shrink-0 text-[11px] font-normal text-fg-muted" title={m.dateMs ? new Date(m.dateMs).toLocaleString() : ""}>
+                        {formatDate(m.dateMs)}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-1.5">
                       {Icon && <Icon size={12} className="shrink-0 text-fg-muted" />}
                       {m.importance === 2 && <AlertCircle size={12} className="shrink-0 text-danger" aria-label="High importance" />}
                       {m.importance === 0 && <Flag size={12} className="shrink-0 text-fg-subtle" aria-label="Low importance" />}
-                      <span className="truncate text-[13px]">{m.subject}</span>
                       {m.subject.startsWith("(unreadable") && <FileWarning size={12} className="shrink-0 text-danger" />}
+                      <span className="min-w-0 flex-1 truncate text-[12px] font-normal text-fg-muted">{m.subject}</span>
+                      {m.hasAttachments && <Paperclip size={12} className="shrink-0 text-fg-muted" />}
+                      {m.size > 0 && <span className="shrink-0 text-[11px] font-normal text-fg-subtle">{humanBytes(m.size)}</span>}
                     </div>
-                    <div className="truncate text-[11px] font-normal text-fg-subtle">
-                      {matched ? <span className="text-accent">matched in {matched}</span> : m.messageClass || ""}
-                    </div>
-                  </div>
-                  <div className="flex w-16 shrink-0 items-center justify-end gap-1 text-[11px] font-normal text-fg-muted">
-                    {m.hasAttachments && <Paperclip size={12} />}
-                    {m.size > 0 ? humanBytes(m.size) : ""}
-                  </div>
-                  <div className="w-20 shrink-0 text-right text-[11px] font-normal text-fg-muted" title={m.dateMs ? new Date(m.dateMs).toLocaleString() : ""}>
-                    {formatDate(m.dateMs)}
+                    {matched && <div className="truncate text-[11px] font-normal text-accent">matched in {matched}</div>}
                   </div>
                 </div>
               );

@@ -78,11 +78,14 @@ impl Mailbox {
         let by_nid: HashMap<u32, Node> = nodes.iter().map(|n| (n.nid, *n)).collect();
         let names = ltp::read_names(&mut pst, &nodes);
 
-        let essentials_missing: Vec<String> = [(NID_MESSAGE_STORE, "message store"), (NID_ROOT_FOLDER, "root folder")]
-            .iter()
-            .filter(|(nid, _)| !by_nid.contains_key(nid))
-            .map(|(nid, what)| format!("{what} (node 0x{nid:X})"))
-            .collect();
+        let essentials_missing: Vec<String> = [
+            (NID_MESSAGE_STORE, "message store"),
+            (NID_ROOT_FOLDER, "root folder"),
+        ]
+        .iter()
+        .filter(|(nid, _)| !by_nid.contains_key(nid))
+        .map(|(nid, what)| format!("{what} (node 0x{nid:X})"))
+        .collect();
 
         let mut mb = Mailbox {
             pst,
@@ -304,7 +307,13 @@ impl Mailbox {
                         pc.str(PID_CONTAINER_CLASS).map(str::to_string),
                         false,
                     ),
-                    Err(_) => (format!("(unreadable folder 0x{:X})", n.nid), 0, 0, None, true),
+                    Err(_) => (
+                        format!("(unreadable folder 0x{:X})", n.nid),
+                        0,
+                        0,
+                        None,
+                        true,
+                    ),
                 };
             if n.nid != n.nid_parent {
                 children.entry(n.nid_parent).or_default().push(n.nid);
@@ -337,7 +346,11 @@ impl Mailbox {
 
         // Messages per folder, from the index's parent pointers.
         let mut messages_in: HashMap<u32, Vec<u32>> = HashMap::new();
-        for n in self.nodes.iter().filter(|n| n.nid_type() == NID_TYPE_MESSAGE) {
+        for n in self
+            .nodes
+            .iter()
+            .filter(|n| n.nid_type() == NID_TYPE_MESSAGE)
+        {
             messages_in.entry(n.nid_parent).or_default().push(n.nid);
         }
         for (nid, f) in folders.iter_mut() {
@@ -350,10 +363,12 @@ impl Mailbox {
         }
         // Children sorted by name needs the names, which the borrow above cannot see;
         // done in a second pass with a snapshot.
-        let name_of: HashMap<u32, String> = folders.iter().map(|(k, v)| (*k, v.name.clone())).collect();
+        let name_of: HashMap<u32, String> =
+            folders.iter().map(|(k, v)| (*k, v.name.clone())).collect();
         for f in folders.values_mut() {
-            f.children
-                .sort_by_key(|k| folders_name_key(name_of.get(k).map(String::as_str).unwrap_or(""), *k));
+            f.children.sort_by_key(|k| {
+                folders_name_key(name_of.get(k).map(String::as_str).unwrap_or(""), *k)
+            });
         }
 
         // Paths, depth and reachability, walking down from the root.
@@ -363,7 +378,9 @@ impl Mailbox {
             if !seen.insert(nid) {
                 continue;
             }
-            let Some(f) = folders.get_mut(&nid) else { continue };
+            let Some(f) = folders.get_mut(&nid) else {
+                continue;
+            };
             f.orphan = false;
             f.depth = depth;
             f.path = path.clone();
@@ -496,7 +513,9 @@ impl Mailbox {
         let mut out = Vec::with_capacity(nids.len());
         let mut unreadable = 0;
         for nid in nids {
-            let Some(node) = self.by_nid.get(&nid).copied() else { continue };
+            let Some(node) = self.by_nid.get(&nid).copied() else {
+                continue;
+            };
             if let Some(props) = rows.get(&nid) {
                 // A table row has no sender e-mail or display-to in most files, and that
                 // is fine for a list. The subject is the one thing worth insisting on.
@@ -578,7 +597,11 @@ impl Mailbox {
             offset,
             total,
             items,
-            unreadable: self.list_unreadable.get(&folder).copied().unwrap_or(unreadable),
+            unreadable: self
+                .list_unreadable
+                .get(&folder)
+                .copied()
+                .unwrap_or(unreadable),
         }
     }
 
@@ -691,7 +714,11 @@ impl Mailbox {
     /// The bytes of one attachment, with its name. By-value attachments only; an
     /// embedded message is a message, not a file, and is read through
     /// [`Mailbox::embedded_message`].
-    pub fn attachment_data(&mut self, message: u32, attachment: u32) -> Result<(AttachmentInfo, Vec<u8>), String> {
+    pub fn attachment_data(
+        &mut self,
+        message: u32,
+        attachment: u32,
+    ) -> Result<(AttachmentInfo, Vec<u8>), String> {
         let node = *self
             .by_nid
             .get(&message)
@@ -703,7 +730,9 @@ impl Mailbox {
         let pc = read_pc(&mut self.pst, sub.data, sub.sub)?;
         let info = attachment_info(attachment, &pc);
         if info.is_embedded_message {
-            return Err("this attachment is an embedded message, not a file; open it to read it".into());
+            return Err(
+                "this attachment is an embedded message, not a file; open it to read it".into(),
+            );
         }
         match pc.props.get(&PID_ATTACH_DATA) {
             Some(Value::Bytes(b)) => {
@@ -721,7 +750,11 @@ impl Mailbox {
 
     /// An embedded message (attach method 5) as a detail, read from the attachment's
     /// own subnode tree.
-    pub fn embedded_message(&mut self, message: u32, attachment: u32) -> Result<MessageDetail, String> {
+    pub fn embedded_message(
+        &mut self,
+        message: u32,
+        attachment: u32,
+    ) -> Result<MessageDetail, String> {
         let node = *self
             .by_nid
             .get(&message)
@@ -734,9 +767,10 @@ impl Mailbox {
         // PidTagAttachDataObject is a subnode id naming the embedded message's own
         // property context inside the attachment's subnode tree.
         let inner = match apc.props.get(&PID_ATTACH_DATA) {
-            Some(Value::Raw { ptype: 0x000D, bytes }) if bytes.len() >= 4 => {
-                u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
-            }
+            Some(Value::Raw {
+                ptype: 0x000D,
+                bytes,
+            }) if bytes.len() >= 4 => u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
             _ => {
                 // The LTP layer resolves subnode-backed values eagerly, so an embedded
                 // message arrives as its bytes. Look the subnode up by type instead.
@@ -829,7 +863,8 @@ impl Mailbox {
     pub fn search(&mut self, q: &SearchQuery, on: crate::Progress) -> SearchResult {
         let started = std::time::Instant::now();
         let needle = q.text.trim().to_lowercase();
-        let any_text = q.in_subject || q.in_sender || q.in_recipients || q.in_body || q.in_attachment_names;
+        let any_text =
+            q.in_subject || q.in_sender || q.in_recipients || q.in_body || q.in_attachment_names;
         let folders: Vec<u32> = match q.folder {
             Some(f) => self.subtree(f),
             None => self.folders.keys().copied().collect(),
@@ -872,17 +907,26 @@ impl Mailbox {
                         matched = "sender".into();
                     }
                 }
-                let needs_deep = (matched.is_empty() && !needle.is_empty() && any_text
+                let needs_deep = (matched.is_empty()
+                    && !needle.is_empty()
+                    && any_text
                     && (q.in_body || q.in_recipients || q.in_attachment_names || s.from_table))
                     || attach_needle.is_some();
                 if needs_deep {
-                    let Some(node) = self.by_nid.get(&s.nid).copied() else { continue };
-                    let Ok(pc) = read_node_pc(&mut self.pst, &node) else { continue };
+                    let Some(node) = self.by_nid.get(&s.nid).copied() else {
+                        continue;
+                    };
+                    let Ok(pc) = read_node_pc(&mut self.pst, &node) else {
+                        continue;
+                    };
                     // A table row carries no sender e-mail, so the sender check is
                     // repeated against the full properties before the body is read.
                     if matched.is_empty() && !needle.is_empty() && q.in_sender {
                         let email = pc.str(PID_SENDER_EMAIL).unwrap_or("").to_lowercase();
-                        let rep = pc.str(PID_SENT_REPRESENTING_NAME).unwrap_or("").to_lowercase();
+                        let rep = pc
+                            .str(PID_SENT_REPRESENTING_NAME)
+                            .unwrap_or("")
+                            .to_lowercase();
                         if email.contains(&needle) || rep.contains(&needle) {
                             matched = "sender".into();
                         }
@@ -904,7 +948,9 @@ impl Mailbox {
                         }
                     }
                     let mut attach_names: Option<Vec<String>> = None;
-                    if attach_needle.is_some() || (matched.is_empty() && q.in_attachment_names && !needle.is_empty()) {
+                    if attach_needle.is_some()
+                        || (matched.is_empty() && q.in_attachment_names && !needle.is_empty())
+                    {
                         let mut problems = Vec::new();
                         let names: Vec<String> = self
                             .attachments_of(&node, &mut problems)
@@ -925,10 +971,12 @@ impl Mailbox {
                             }
                         }
                     }
-                    if matched.is_empty() && !needle.is_empty() && q.in_body {
-                        if body_text(&pc).is_some_and(|b| b.to_lowercase().contains(&needle)) {
-                            matched = "body".into();
-                        }
+                    if matched.is_empty()
+                        && !needle.is_empty()
+                        && q.in_body
+                        && body_text(&pc).is_some_and(|b| b.to_lowercase().contains(&needle))
+                    {
+                        matched = "body".into();
                     }
                 }
                 if !needle.is_empty() && any_text && matched.is_empty() {
@@ -947,7 +995,7 @@ impl Mailbox {
                 }
             }
         }
-        hits.sort_by(|a, b| b.summary.date_ms.cmp(&a.summary.date_ms));
+        hits.sort_by_key(|h| std::cmp::Reverse(h.summary.date_ms));
         SearchResult {
             hits,
             scanned,
@@ -977,7 +1025,10 @@ fn folders_name_key(name: &str, nid: u32) -> (String, u32) {
 
 /// The node and block index, following the header's roots and falling back to the
 /// sweep and the carve when they are unusable (or when asked to ignore them).
-fn build_index(pst: &mut Pst, salvage: bool) -> (Vec<Node>, Vec<Block>, Option<RecoveryInfo>, IndexSource) {
+fn build_index(
+    pst: &mut Pst,
+    salvage: bool,
+) -> (Vec<Node>, Vec<Block>, Option<RecoveryInfo>, IndexSource) {
     let (mut nodes, mut blocks) = if salvage {
         (Vec::new(), Vec::new())
     } else {
@@ -1038,7 +1089,12 @@ fn has_attachment_subnode(pst: &mut Pst, node: &Node) -> bool {
 }
 
 /// A listing row from either a table row or a full property context.
-fn summary_from_props(nid: u32, folder: u32, props: &BTreeMap<u16, Value>, from_table: bool) -> MessageSummary {
+fn summary_from_props(
+    nid: u32,
+    folder: u32,
+    props: &BTreeMap<u16, Value>,
+    from_table: bool,
+) -> MessageSummary {
     let s = |id: u16| -> &str {
         match props.get(&id) {
             Some(Value::Str(s)) => s,
@@ -1069,8 +1125,27 @@ fn summary_from_props(nid: u32, folder: u32, props: &BTreeMap<u16, Value>, from_
         } else {
             subject
         },
-        sender_name: s(PID_SENDER_NAME).to_string(),
-        sender_email: s(PID_SENDER_EMAIL).to_string(),
+        // A contents-table row usually carries the "sent representing" pair rather than
+        // the sender's own, and for ordinary mail the two are the same person.
+        sender_name: {
+            let n = s(PID_SENDER_NAME);
+            if n.is_empty() {
+                s(PID_SENT_REPRESENTING_NAME)
+            } else {
+                n
+            }
+            .to_string()
+        },
+        sender_email: {
+            let e = s(PID_SENDER_EMAIL);
+            let e = if e.is_empty() { s(0x5D01) } else { e };
+            let e = if e.is_empty() {
+                s(PID_SENT_REPRESENTING_EMAIL)
+            } else {
+                e
+            };
+            if e.is_empty() { s(0x5D02) } else { e }.to_string()
+        },
         display_to: s(PID_DISPLAY_TO).to_string(),
         date_ms: t(PID_DELIVERY_TIME)
             .or_else(|| t(PID_SUBMIT_TIME))
@@ -1125,7 +1200,14 @@ fn attachment_info(nid: u32, pc: &Pc) -> AttachmentInfo {
     let name = if raw_name.is_empty() {
         if is_embedded {
             let subj = pc.str(PID_SUBJECT).unwrap_or("Embedded message").trim();
-            format!("{}.msg", if subj.is_empty() { "Embedded message" } else { subj })
+            format!(
+                "{}.msg",
+                if subj.is_empty() {
+                    "Embedded message"
+                } else {
+                    subj
+                }
+            )
         } else {
             format!("attachment-{nid:X}")
         }
@@ -1270,7 +1352,9 @@ fn describe_raw(ptype: u16, b: &[u8]) -> String {
         0x1003 if b.len() >= 4 => {
             let n = u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize;
             (0..n.min((b.len() - 4) / 4))
-                .map(|i| i32::from_le_bytes(b[4 + i * 4..8 + i * 4].try_into().unwrap()).to_string())
+                .map(|i| {
+                    i32::from_le_bytes(b[4 + i * 4..8 + i * 4].try_into().unwrap()).to_string()
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
         }
@@ -1305,7 +1389,9 @@ pub fn multi_string(b: &[u8], wide: bool) -> Vec<String> {
         let s = &b[start..end];
         out.push(if wide {
             let u: Vec<u16> = s
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|c| u16::from_le_bytes([c[0], c[1]]))
                 .collect();
             String::from_utf16_lossy(&u)
@@ -1317,7 +1403,10 @@ pub fn multi_string(b: &[u8], wide: bool) -> Vec<String> {
 }
 
 fn hex(b: &[u8]) -> String {
-    b.iter().map(|x| format!("{x:02X}")).collect::<Vec<_>>().join(" ")
+    b.iter()
+        .map(|x| format!("{x:02X}"))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Contact, appointment and task fields, resolved through the file's own name map.
@@ -1361,27 +1450,51 @@ fn extra_fields(pc: &Pc, names: &Names) -> Vec<(String, String)> {
             out.push((k.to_string(), v));
         }
     };
-    let fixed = |id: u16| pc.str(id).filter(|s| !s.trim().is_empty()).map(str::to_string);
+    let fixed = |id: u16| {
+        pc.str(id)
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_string)
+    };
 
     match kind {
         ItemType::Contact | ItemType::DistributionList => {
             push(&mut out, "Full name", fixed(PID_DISPLAY_NAME));
-            push(&mut out, "File as", named_str("PSETID_Address", LID_FILE_UNDER));
+            push(
+                &mut out,
+                "File as",
+                named_str("PSETID_Address", LID_FILE_UNDER),
+            );
             push(&mut out, "First name", fixed(PID_GIVEN_NAME));
             push(&mut out, "Middle name", fixed(PID_MIDDLE_NAME));
             push(&mut out, "Last name", fixed(PID_SURNAME));
             push(&mut out, "Company", fixed(PID_COMPANY_NAME));
             push(&mut out, "Job title", fixed(PID_TITLE));
             push(&mut out, "Department", fixed(PID_DEPARTMENT_NAME));
-            push(&mut out, "E-mail", named_str("PSETID_Address", LID_EMAIL1_ADDRESS));
-            push(&mut out, "E-mail 2", named_str("PSETID_Address", LID_EMAIL2_ADDRESS));
-            push(&mut out, "E-mail 3", named_str("PSETID_Address", LID_EMAIL3_ADDRESS));
+            push(
+                &mut out,
+                "E-mail",
+                named_str("PSETID_Address", LID_EMAIL1_ADDRESS),
+            );
+            push(
+                &mut out,
+                "E-mail 2",
+                named_str("PSETID_Address", LID_EMAIL2_ADDRESS),
+            );
+            push(
+                &mut out,
+                "E-mail 3",
+                named_str("PSETID_Address", LID_EMAIL3_ADDRESS),
+            );
             push(&mut out, "Business phone", fixed(PID_BUSINESS_PHONE));
             push(&mut out, "Home phone", fixed(PID_HOME_PHONE));
             push(&mut out, "Mobile", fixed(PID_MOBILE_PHONE));
             push(&mut out, "Business fax", fixed(PID_BUSINESS_FAX));
             push(&mut out, "Web page", fixed(PID_BUSINESS_HOMEPAGE));
-            push(&mut out, "IM address", named_str("PSETID_Address", LID_IM_ADDRESS));
+            push(
+                &mut out,
+                "IM address",
+                named_str("PSETID_Address", LID_IM_ADDRESS),
+            );
             let home = [
                 fixed(PID_HOME_ADDRESS_STREET),
                 fixed(PID_HOME_ADDRESS_CITY),
@@ -1410,16 +1523,40 @@ fn extra_fields(pc: &Pc, names: &Names) -> Vec<(String, String)> {
             if !work.is_empty() {
                 out.push(("Business address".into(), work));
             }
-            push(&mut out, "Birthday", pc.time(PID_BIRTHDAY).filter(|t| *t != 0).map(|t| ltp::filetime(t).trim().to_string()));
-            push(&mut out, "Anniversary", pc.time(PID_WEDDING_ANNIVERSARY).filter(|t| *t != 0).map(|t| ltp::filetime(t).trim().to_string()));
+            push(
+                &mut out,
+                "Birthday",
+                pc.time(PID_BIRTHDAY)
+                    .filter(|t| *t != 0)
+                    .map(|t| ltp::filetime(t).trim().to_string()),
+            );
+            push(
+                &mut out,
+                "Anniversary",
+                pc.time(PID_WEDDING_ANNIVERSARY)
+                    .filter(|t| *t != 0)
+                    .map(|t| ltp::filetime(t).trim().to_string()),
+            );
             push(&mut out, "Nickname", fixed(PID_NICKNAME));
             push(&mut out, "Spouse", fixed(PID_SPOUSE_NAME));
             push(&mut out, "Assistant", fixed(PID_ASSISTANT));
         }
         ItemType::Appointment | ItemType::MeetingRequest => {
-            push(&mut out, "Start", named_time("PSETID_Appointment", LID_APPT_START_WHOLE));
-            push(&mut out, "End", named_time("PSETID_Appointment", LID_APPT_END_WHOLE));
-            push(&mut out, "Location", named_str("PSETID_Appointment", LID_LOCATION));
+            push(
+                &mut out,
+                "Start",
+                named_time("PSETID_Appointment", LID_APPT_START_WHOLE),
+            );
+            push(
+                &mut out,
+                "End",
+                named_time("PSETID_Appointment", LID_APPT_END_WHOLE),
+            );
+            push(
+                &mut out,
+                "Location",
+                named_str("PSETID_Appointment", LID_LOCATION),
+            );
             push(
                 &mut out,
                 "All day",
@@ -1449,8 +1586,16 @@ fn extra_fields(pc: &Pc, names: &Names) -> Vec<(String, String)> {
             );
         }
         ItemType::Task => {
-            push(&mut out, "Start date", named_time("PSETID_Task", LID_TASK_START_DATE));
-            push(&mut out, "Due date", named_time("PSETID_Task", LID_TASK_DUE_DATE));
+            push(
+                &mut out,
+                "Start date",
+                named_time("PSETID_Task", LID_TASK_START_DATE),
+            );
+            push(
+                &mut out,
+                "Due date",
+                named_time("PSETID_Task", LID_TASK_DUE_DATE),
+            );
             push(
                 &mut out,
                 "Status",
@@ -1486,17 +1631,20 @@ fn extra_fields(pc: &Pc, names: &Names) -> Vec<(String, String)> {
 /// boundary, and a dependency for forty lines of arithmetic is not worth taking.
 pub fn sha256_hex(data: &[u8]) -> String {
     const K: [u32; 64] = [
-        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
     ];
     let mut h: [u32; 8] = [
-        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
     ];
     let mut msg = data.to_vec();
     let bit_len = (data.len() as u64).wrapping_mul(8);
@@ -1505,21 +1653,28 @@ pub fn sha256_hex(data: &[u8]) -> String {
         msg.push(0);
     }
     msg.extend_from_slice(&bit_len.to_be_bytes());
-    for chunk in msg.chunks_exact(64) {
+    for chunk in msg.as_chunks::<64>().0 {
         let mut w = [0u32; 64];
-        for (i, word) in chunk.chunks_exact(4).enumerate() {
+        for (i, word) in chunk.as_chunks::<4>().0.iter().enumerate() {
             w[i] = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
         }
         for i in 16..64 {
             let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
             let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
-            w[i] = w[i - 16].wrapping_add(s0).wrapping_add(w[i - 7]).wrapping_add(s1);
+            w[i] = w[i - 16]
+                .wrapping_add(s0)
+                .wrapping_add(w[i - 7])
+                .wrapping_add(s1);
         }
         let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh] = h;
         for i in 0..64 {
             let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
             let ch = (e & f) ^ (!e & g);
-            let t1 = hh.wrapping_add(s1).wrapping_add(ch).wrapping_add(K[i]).wrapping_add(w[i]);
+            let t1 = hh
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(K[i])
+                .wrapping_add(w[i]);
             let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
             let maj = (a & b) ^ (a & c) ^ (b & c);
             let t2 = s0.wrapping_add(maj);
@@ -1549,7 +1704,9 @@ mod tests {
             eprintln!("skipping {name}: run scripts/fetch-fixtures.ps1");
             return None;
         }
-        Some(Mailbox::open(&p, OpenOptions::default(), &mut crate::silent()).expect("fixture opens"))
+        Some(
+            Mailbox::open(&p, OpenOptions::default(), &mut crate::silent()).expect("fixture opens"),
+        )
     }
 
     #[test]
@@ -1566,7 +1723,9 @@ mod tests {
 
     #[test]
     fn opens_a_pst_and_builds_the_tree() {
-        let Some(mut mb) = fixture("dist-list.pst") else { return };
+        let Some(mut mb) = fixture("dist-list.pst") else {
+            return;
+        };
         let info = mb.info().clone();
         assert_eq!(info.health, HealthStatus::Healthy, "{:?}", info.warnings);
         assert_eq!(info.index_source, IndexSource::Header);
@@ -1597,20 +1756,31 @@ mod tests {
 
     #[test]
     fn opens_an_ost_and_lists_the_inbox_from_its_table() {
-        let Some(mut mb) = fixture("example-2013.ost") else { return };
+        let Some(mut mb) = fixture("example-2013.ost") else {
+            return;
+        };
         assert!(mb.info().is_ost);
         assert_eq!(mb.info().format, FileFormat::Unicode4k);
-        let inbox = mb.folders().into_iter().find(|f| f.name == "Inbox").unwrap();
+        let inbox = mb
+            .folders()
+            .into_iter()
+            .find(|f| f.name == "Inbox")
+            .unwrap();
         let page = mb.list_messages(inbox.nid, 0, 10, SortKey::Date, true);
         assert!(page.total >= 2, "{}", page.total);
-        assert!(page.items.iter().any(|m| m.from_table), "contents table was not used");
+        assert!(
+            page.items.iter().any(|m| m.from_table),
+            "contents table was not used"
+        );
         let d = mb.message(page.items[0].nid).unwrap();
         assert!(d.body_text.is_some() || d.body_html.is_some());
     }
 
     #[test]
     fn search_finds_by_subject_and_by_body() {
-        let Some(mut mb) = fixture("example-2013.ost") else { return };
+        let Some(mut mb) = fixture("example-2013.ost") else {
+            return;
+        };
         let q = SearchQuery {
             text: "test".into(),
             in_subject: true,
@@ -1645,7 +1815,9 @@ mod tests {
 
     #[test]
     fn search_can_be_cancelled() {
-        let Some(mut mb) = fixture("example-2013.ost") else { return };
+        let Some(mut mb) = fixture("example-2013.ost") else {
+            return;
+        };
         let r = mb.search(
             &SearchQuery {
                 text: "a".into(),
@@ -1674,7 +1846,11 @@ mod tests {
         assert_eq!(mb.info().index_source, IndexSource::Recovered);
         assert_eq!(mb.info().health, HealthStatus::Recovered);
         assert!(mb.info().recovery.as_ref().unwrap().carved_blocks > 100);
-        let inbox = mb.folders().into_iter().find(|f| f.name == "Contacts").unwrap();
+        let inbox = mb
+            .folders()
+            .into_iter()
+            .find(|f| f.name == "Contacts")
+            .unwrap();
         let page = mb.list_messages(inbox.nid, 0, 10, SortKey::Date, true);
         assert!(page.total >= 2);
         let _ = std::fs::remove_file(torn);

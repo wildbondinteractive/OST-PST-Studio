@@ -194,9 +194,16 @@ impl JobReport {
             JobKind::Verify => "Verification",
             JobKind::ExtractAttachments => "Attachment extraction",
         };
-        s.push_str(&format!("{kind} report (OST/PST Studio {})\n", self.app_version));
+        s.push_str(&format!(
+            "{kind} report (OST/PST Studio {})\n",
+            self.app_version
+        ));
         s.push_str(&format!("Status: {}\n", status_word(self.status)));
-        s.push_str(&format!("Source: {} ({})\n", self.source.path, crate::fsutil::human_bytes(self.source.size_bytes)));
+        s.push_str(&format!(
+            "Source: {} ({})\n",
+            self.source.path,
+            crate::fsutil::human_bytes(self.source.size_bytes)
+        ));
         if !self.destination.path.is_empty() {
             s.push_str(&format!(
                 "Destination: {} ({})\n",
@@ -236,7 +243,10 @@ impl JobReport {
             ));
         }
         if let Some(f) = self.export_format {
-            s.push_str(&format!("Format: {:?}, {} file(s) written\n", f, self.files_written));
+            s.push_str(&format!(
+                "Format: {:?}, {} file(s) written\n",
+                f, self.files_written
+            ));
         }
         if self.dropped_nodes > 0 || self.dropped_blocks > 0 {
             s.push_str(&format!(
@@ -260,7 +270,12 @@ impl JobReport {
         section(&mut s, "Recovery actions", &self.recovery_actions);
         s.push_str(&format!("\nValidation: {:?}\n", self.validation.status));
         for c in &self.validation.checks {
-            s.push_str(&format!("  [{}] {}: {}\n", check_word(c.status), c.name, c.detail));
+            s.push_str(&format!(
+                "  [{}] {}: {}\n",
+                check_word(c.status),
+                c.name,
+                c.detail
+            ));
         }
         s.push_str(&format!(
             "Outlook compatibility: {}\n",
@@ -270,7 +285,8 @@ impl JobReport {
                     "allocation maps marked invalid; Outlook will require SCANPST before opening",
                 OutlookCompatibility::MapsWritten =>
                     "written with valid allocation maps (not yet confirmed in Outlook)",
-                OutlookCompatibility::VerifiedManually => "opened in Outlook and confirmed manually",
+                OutlookCompatibility::VerifiedManually =>
+                    "opened in Outlook and confirmed manually",
             }
         ));
         section(&mut s, "Warnings", &self.warnings);
@@ -296,21 +312,43 @@ impl JobReport {
             h.push_str(&format!("<tr><th>{}</th><td>{}</td></tr>", esc(k), esc(v)));
         };
         row(&mut h, "Status", status_word(self.status));
-        row(&mut h, "Source", &format!("{} ({})", self.source.path, crate::fsutil::human_bytes(self.source.size_bytes)));
+        row(
+            &mut h,
+            "Source",
+            &format!(
+                "{} ({})",
+                self.source.path,
+                crate::fsutil::human_bytes(self.source.size_bytes)
+            ),
+        );
         if !self.destination.path.is_empty() {
-            row(&mut h, "Destination", &format!("{} ({})", self.destination.path, crate::fsutil::human_bytes(self.destination.size_bytes)));
+            row(
+                &mut h,
+                "Destination",
+                &format!(
+                    "{} ({})",
+                    self.destination.path,
+                    crate::fsutil::human_bytes(self.destination.size_bytes)
+                ),
+            );
         }
         row(&mut h, "Started", &iso(self.started_ms));
         row(&mut h, "Finished", &iso(self.finished_ms));
         row(&mut h, "Duration", &human_ms(self.duration_ms));
-        row(&mut h, "Validation", &format!("{:?}", self.validation.status));
+        row(
+            &mut h,
+            "Validation",
+            &format!("{:?}", self.validation.status),
+        );
         row(
             &mut h,
             "Outlook compatibility",
             match self.outlook {
                 OutlookCompatibility::Unverified => "not verified",
                 OutlookCompatibility::RequiresScanpst => "requires SCANPST",
-                OutlookCompatibility::MapsWritten => "valid allocation maps written (unconfirmed in Outlook)",
+                OutlookCompatibility::MapsWritten => {
+                    "valid allocation maps written (unconfirmed in Outlook)"
+                }
                 OutlookCompatibility::VerifiedManually => "confirmed manually in Outlook",
             },
         );

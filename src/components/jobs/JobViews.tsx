@@ -144,14 +144,14 @@ export function ReportView({ report, jobId }: { report: JobReport; jobId?: strin
     verifiedManually: ["success", "Confirmed in Outlook manually"],
   }[report.outlook] as [Parameters<typeof Badge>[0]["tone"], string];
   const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (
-    <div className="rounded-md bg-surface-2 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wide text-fg-subtle">{label}</div>
-      <div className="text-[13px] font-semibold tabular-nums">{value}</div>
+    <div className="min-w-0 rounded-md bg-surface-2 px-3 py-2">
+      <div className="truncate text-[10px] uppercase tracking-wide text-fg-subtle">{label}</div>
+      <div className="truncate text-[13px] font-semibold tabular-nums">{value}</div>
     </div>
   );
   return (
     <div className="flex flex-col gap-3 text-xs">
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
         <Stat label="Source" value={humanBytes(report.source.sizeBytes)} />
         {report.destination.path && <Stat label="Output" value={report.kind === "export" ? `${report.filesWritten} files` : humanBytes(report.destination.sizeBytes)} />}
         <Stat label="Folders" value={report.kind === "verify" ? report.sourceCounts.folders : `${report.outputCounts.folders} / ${report.sourceCounts.folders}`} />

@@ -3,7 +3,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { ArrowRightLeft, FolderDown, FolderOutput, Info, Mail, RefreshCw, Search, SlidersHorizontal, X, FileJson, Braces, AlertTriangle } from "lucide-react";
 import { api, emptyQuery, errorMessage, type MessageDetail, type MessageSummary, type SearchQuery, type SearchResult, type SortKey } from "@/lib/api";
-import { useActiveMailbox, useApp } from "@/lib/store";
+import { defaultFolder, useActiveMailbox, useApp } from "@/lib/store";
 import { cn, healthLabel, healthTone, humanBytes, pluralize } from "@/lib/utils";
 import { Badge, Button, Checkbox, ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, Dialog, DialogContent, EmptyState, Field, Input, Kbd, Select, Tooltip } from "@/components/ui";
 import { FolderTree } from "@/components/explorer/FolderTree";
@@ -87,6 +87,14 @@ export function Explorer() {
     },
     [mb, selectedFolder, pageSize, toast],
   );
+
+  // A mailbox with nothing selected lands on its Inbox (or the first folder with mail).
+  useEffect(() => {
+    if (mb && selectedFolder == null) {
+      const f = defaultFolder(mb.folders);
+      if (f != null) setSelectedFolder(f);
+    }
+  }, [mb, selectedFolder, setSelectedFolder]);
 
   useEffect(() => {
     setSearchResult(null);

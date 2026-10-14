@@ -88,7 +88,11 @@ pub(crate) fn new_id_pub(prefix: &str) -> String {
 fn new_id(prefix: &str) -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static N: AtomicU64 = AtomicU64::new(1);
-    format!("{prefix}-{}-{}", now_ms(), N.fetch_add(1, Ordering::Relaxed))
+    format!(
+        "{prefix}-{}-{}",
+        now_ms(),
+        N.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 async fn blocking<T: Send + 'static>(
@@ -187,7 +191,10 @@ async fn open_mailbox(
         .map_err(|_| "mailbox registry is poisoned".to_string())?
         .insert(id.clone(), Arc::new(Mutex::new(mb)));
     {
-        let mut h = state.history.lock().map_err(|_| "history is poisoned".to_string())?;
+        let mut h = state
+            .history
+            .lock()
+            .map_err(|_| "history is poisoned".to_string())?;
         h.touch_file(&path, &info);
         h.save(&state.data_dir);
     }
@@ -242,18 +249,30 @@ async fn list_messages(
 ) -> Result<MessagePage, String> {
     let mb = mailbox(&state, &id)?;
     blocking(move || {
-        Ok(mb
-            .lock()
-            .map_err(|_| "mailbox is poisoned")?
-            .list_messages(folder, offset, limit.clamp(1, 2000), sort, descending))
+        Ok(mb.lock().map_err(|_| "mailbox is poisoned")?.list_messages(
+            folder,
+            offset,
+            limit.clamp(1, 2000),
+            sort,
+            descending,
+        ))
     })
     .await
 }
 
 #[tauri::command]
-async fn get_message(state: State<'_, AppState>, id: String, nid: u32) -> Result<MessageDetail, String> {
+async fn get_message(
+    state: State<'_, AppState>,
+    id: String,
+    nid: u32,
+) -> Result<MessageDetail, String> {
     let mb = mailbox(&state, &id)?;
-    blocking(move || mb.lock().map_err(|_| "mailbox is poisoned".to_string())?.message(nid)).await
+    blocking(move || {
+        mb.lock()
+            .map_err(|_| "mailbox is poisoned".to_string())?
+            .message(nid)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -273,7 +292,11 @@ async fn get_embedded_message(
 }
 
 #[tauri::command]
-async fn node_properties(state: State<'_, AppState>, id: String, nid: u32) -> Result<Vec<PropertyView>, String> {
+async fn node_properties(
+    state: State<'_, AppState>,
+    id: String,
+    nid: u32,
+) -> Result<Vec<PropertyView>, String> {
     let mb = mailbox(&state, &id)?;
     blocking(move || {
         mb.lock()
@@ -301,10 +324,21 @@ async fn attachment_preview(
         let mime = info.mime.clone();
         let too_large = bytes.len() > PREVIEW_LIMIT;
         let is_image = mime.starts_with("image/") && !mime.contains("svg");
-        let is_text = mime.starts_with("text/") || matches!(info.extension.as_str(), "txt" | "log" | "csv" | "json" | "xml" | "md" | "ini" | "eml");
-        let base64 = if is_image && !too_large { b64(&bytes) } else { String::new() };
+        let is_text = mime.starts_with("text/")
+            || matches!(
+                info.extension.as_str(),
+                "txt" | "log" | "csv" | "json" | "xml" | "md" | "ini" | "eml"
+            );
+        let base64 = if is_image && !too_large {
+            b64(&bytes)
+        } else {
+            String::new()
+        };
         let text = if is_text && !too_large {
-            Some(ostpst_core::html::decode(&bytes[..bytes.len().min(512 * 1024)], None))
+            Some(ostpst_core::html::decode(
+                &bytes[..bytes.len().min(512 * 1024)],
+                None,
+            ))
         } else {
             None
         };
@@ -396,7 +430,9 @@ async fn extract_attachments(
                 match m.attachment_data(nid, a.nid) {
                     Ok((info, bytes)) => {
                         let (stem, ext) = match info.name.rsplit_once('.') {
-                            Some((s, e)) if !s.is_empty() && e.len() <= 10 => (s.to_string(), e.to_string()),
+                            Some((s, e)) if !s.is_empty() && e.len() <= 10 => {
+                                (s.to_string(), e.to_string())
+                            }
                             _ => (info.name.clone(), "bin".into()),
                         };
                         let p = ostpst_core::fsutil::unique_in(&dir, &stem, &ext);
@@ -427,7 +463,10 @@ async fn search(
     let mb = mailbox(&state, &id)?;
     let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
     {
-        let mut reg = state.search_cancel.lock().map_err(|_| "search registry is poisoned")?;
+        let mut reg = state
+            .search_cancel
+            .lock()
+            .map_err(|_| "search registry is poisoned")?;
         if let Some(prev) = reg.insert(id.clone(), cancel.clone()) {
             prev.store(true, std::sync::atomic::Ordering::Relaxed);
         }
@@ -475,8 +514,14 @@ fn cancel_search(state: State<'_, AppState>, id: String) -> Result<(), String> {
 
 #[tauri::command]
 fn start_job(app: AppHandle, state: State<'_, AppState>, spec: JobSpec) -> Result<String, String> {
-    let max = state.settings.lock().map(|s| s.max_concurrent_jobs).unwrap_or(2);
-    let id = state.jobs.start(app, spec, max.max(1) as usize, state.data_dir.clone());
+    let max = state
+        .settings
+        .lock()
+        .map(|s| s.max_concurrent_jobs)
+        .unwrap_or(2);
+    let id = state
+        .jobs
+        .start(app, spec, max.max(1) as usize, state.data_dir.clone());
     Ok(id)
 }
 
@@ -504,13 +549,27 @@ fn clear_finished_jobs(state: State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 fn retry_job(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<String, String> {
-    let spec = state.jobs.spec_of(&id).ok_or("that job is no longer known")?;
-    let max = state.settings.lock().map(|s| s.max_concurrent_jobs).unwrap_or(2);
-    Ok(state.jobs.start(app, spec, max.max(1) as usize, state.data_dir.clone()))
+    let spec = state
+        .jobs
+        .spec_of(&id)
+        .ok_or("that job is no longer known")?;
+    let max = state
+        .settings
+        .lock()
+        .map(|s| s.max_concurrent_jobs)
+        .unwrap_or(2);
+    Ok(state
+        .jobs
+        .start(app, spec, max.max(1) as usize, state.data_dir.clone()))
 }
 
 #[tauri::command]
-fn save_report(state: State<'_, AppState>, id: String, path: String, format: String) -> Result<(), String> {
+fn save_report(
+    state: State<'_, AppState>,
+    id: String,
+    path: String,
+    format: String,
+) -> Result<(), String> {
     let rec = state.jobs.get(&id).ok_or("that job is no longer known")?;
     let report = rec.report.ok_or("the job has no report yet")?;
     let body = match format.as_str() {
@@ -578,7 +637,11 @@ fn path_info(path: String) -> Result<PathInfo, String> {
         size_bytes: meta.as_ref().map(|m| m.len()).unwrap_or(0),
         free_space: ostpst_core::fsutil::free_space(p),
         is_empty_dir: if is_dir {
-            Some(std::fs::read_dir(p).map(|mut d| d.next().is_none()).unwrap_or(false))
+            Some(
+                std::fs::read_dir(p)
+                    .map(|mut d| d.next().is_none())
+                    .unwrap_or(false),
+            )
         } else {
             None
         },
@@ -587,7 +650,11 @@ fn path_info(path: String) -> Result<PathInfo, String> {
 
 /// A suggested output path beside the source (or in the default output directory).
 #[tauri::command]
-fn suggest_output(state: State<'_, AppState>, source: String, extension: String) -> Result<String, String> {
+fn suggest_output(
+    state: State<'_, AppState>,
+    source: String,
+    extension: String,
+) -> Result<String, String> {
     let src = Path::new(&source);
     let stem = src
         .file_stem()
@@ -618,7 +685,9 @@ fn suggest_output(state: State<'_, AppState>, source: String, extension: String)
     } else {
         ostpst_core::fsutil::unique_in(&dir, &name, &extension)
     };
-    Ok(p.to_string_lossy().to_string())
+    // Dialogs hand back backslashes; a path typed with forward slashes should not
+    // produce a mixed one.
+    Ok(p.to_string_lossy().replace('/', "\\"))
 }
 
 #[tauri::command]
@@ -629,25 +698,65 @@ fn app_info(state: State<'_, AppState>) -> Result<AppInfo, String> {
         data_dir: state.data_dir.to_string_lossy().to_string(),
         license: include_str!("../../LICENSE").into(),
         third_party: vec![
-            ("pstfree".into(), "MIT".into(), "https://github.com/sp00nznet/pstfree".into()),
-            ("miniz_oxide".into(), "MIT".into(), "https://github.com/Frommi/miniz_oxide".into()),
-            ("windows-sys".into(), "MIT".into(), "https://github.com/microsoft/windows-rs".into()),
+            (
+                "pstfree".into(),
+                "MIT".into(),
+                "https://github.com/sp00nznet/pstfree".into(),
+            ),
+            (
+                "miniz_oxide".into(),
+                "MIT".into(),
+                "https://github.com/Frommi/miniz_oxide".into(),
+            ),
+            (
+                "windows-sys".into(),
+                "MIT".into(),
+                "https://github.com/microsoft/windows-rs".into(),
+            ),
             ("Tauri".into(), "MIT".into(), "https://tauri.app".into()),
             ("React".into(), "MIT".into(), "https://react.dev".into()),
-            ("Tailwind CSS".into(), "MIT".into(), "https://tailwindcss.com".into()),
-            ("Radix UI".into(), "MIT".into(), "https://www.radix-ui.com".into()),
+            (
+                "Tailwind CSS".into(),
+                "MIT".into(),
+                "https://tailwindcss.com".into(),
+            ),
+            (
+                "Radix UI".into(),
+                "MIT".into(),
+                "https://www.radix-ui.com".into(),
+            ),
             ("Lucide".into(), "ISC".into(), "https://lucide.dev".into()),
-            ("DOMPurify".into(), "Apache-2.0 / MPL-2.0".into(), "https://github.com/cure53/DOMPurify".into()),
-            ("TanStack Virtual".into(), "MIT".into(), "https://tanstack.com/virtual".into()),
-            ("Zustand".into(), "MIT".into(), "https://github.com/pmndrs/zustand".into()),
-            ("libpff (optional, validation only)".into(), "LGPL-3.0".into(), "https://github.com/libyal/libpff".into()),
+            (
+                "DOMPurify".into(),
+                "Apache-2.0 / MPL-2.0".into(),
+                "https://github.com/cure53/DOMPurify".into(),
+            ),
+            (
+                "TanStack Virtual".into(),
+                "MIT".into(),
+                "https://tanstack.com/virtual".into(),
+            ),
+            (
+                "Zustand".into(),
+                "MIT".into(),
+                "https://github.com/pmndrs/zustand".into(),
+            ),
+            (
+                "libpff (optional, validation only)".into(),
+                "LGPL-3.0".into(),
+                "https://github.com/libyal/libpff".into(),
+            ),
         ],
     })
 }
 
 /// A JSON description of the whole mailbox for technical analysis.
 #[tauri::command]
-async fn export_structure_json(state: State<'_, AppState>, id: String, path: String) -> Result<(), String> {
+async fn export_structure_json(
+    state: State<'_, AppState>,
+    id: String,
+    path: String,
+) -> Result<(), String> {
     let mb = mailbox(&state, &id)?;
     blocking(move || {
         let json = {
@@ -675,8 +784,16 @@ fn b64(data: &[u8]) -> String {
             | *c.get(2).unwrap_or(&0) as u32;
         out.push(T[(n >> 18) as usize & 63] as char);
         out.push(T[(n >> 12) as usize & 63] as char);
-        out.push(if c.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
-        out.push(if c.len() > 2 { T[n as usize & 63] as char } else { '=' });
+        out.push(if c.len() > 1 {
+            T[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if c.len() > 2 {
+            T[n as usize & 63] as char
+        } else {
+            '='
+        });
     }
     out
 }

@@ -56,7 +56,11 @@ impl<'a> Tracker<'a> {
         }
         self.last = now;
         self.p.elapsed_ms = self.started.elapsed().as_millis() as u64;
-        if self.p.determinate && self.p.done > 0 && self.p.total > self.p.done && self.p.elapsed_ms > 2000 {
+        if self.p.determinate
+            && self.p.done > 0
+            && self.p.total > self.p.done
+            && self.p.elapsed_ms > 2000
+        {
             let per = self.p.elapsed_ms as f64 / self.p.done as f64;
             self.p.eta_ms = Some((per * (self.p.total - self.p.done) as f64) as u64);
         }
@@ -106,9 +110,10 @@ fn fill_source(report: &mut JobReport, mb: &Mailbox) {
                 r.carved_blocks
             ));
         }
-        report
-            .recovery_actions
-            .push(format!("Recovered {} nodes from surviving index pages.", r.swept_nodes));
+        report.recovery_actions.push(format!(
+            "Recovered {} nodes from surviving index pages.",
+            r.swept_nodes
+        ));
         if r.superseded > 0 {
             report.recovery_actions.push(format!(
                 "{} superseded index entries ignored (older copies of things that later moved); {} could not be confirmed against the bytes on disk.",
@@ -124,7 +129,10 @@ fn fill_source(report: &mut JobReport, mb: &Mailbox) {
             ));
             for s in r.stale.iter().take(20) {
                 report.recovery_actions.push(if s.dangling {
-                    format!("  node 0x{:X}: its data block {} is not in the file", s.nid, s.bid_data)
+                    format!(
+                        "  node 0x{:X}: its data block {} is not in the file",
+                        s.nid, s.bid_data
+                    )
                 } else {
                     format!(
                         "  node 0x{:X}: {} revisions survive, took block {} as the newest",
@@ -167,15 +175,22 @@ pub fn run_convert(id: &str, kind: JobKind, opts: &ConvertOptions, on: Reporter)
     if !t.phase("Opening source", false) {
         fail!(report, crate::CANCELLED.into());
     }
-    let mut mb = match Mailbox::open(src, OpenOptions { salvage: opts.salvage }, &mut t.engine()) {
+    let mut mb = match Mailbox::open(
+        src,
+        OpenOptions {
+            salvage: opts.salvage,
+        },
+        &mut t.engine(),
+    ) {
         Ok(m) => m,
         Err(e) => fail!(report, e),
     };
     fill_source(&mut report, &mb);
     if opts.salvage {
-        report
-            .recovery_actions
-            .insert(0, "Salvage mode: the header's index was ignored and rebuilt by sweeping.".into());
+        report.recovery_actions.insert(
+            0,
+            "Salvage mode: the header's index was ignored and rebuilt by sweeping.".into(),
+        );
     }
 
     // Where the output goes, decided before any work is done.
@@ -280,7 +295,9 @@ pub fn run_convert(id: &str, kind: JobKind, opts: &ConvertOptions, on: Reporter)
         report.output_counts.attachments = v.attachments_read;
         report.validation = v;
     } else {
-        report.notes.push("Validation was switched off for this job.".into());
+        report
+            .notes
+            .push("Validation was switched off for this job.".into());
     }
 
     if t.cancelled {
@@ -301,17 +318,18 @@ pub fn run_convert(id: &str, kind: JobKind, opts: &ConvertOptions, on: Reporter)
         OutlookCompatibility::RequiresScanpst
     };
 
-    let status = if !report.errors.is_empty() || report.validation.status == ValidationStatus::Failed {
-        JobStatus::Failed
-    } else if !report.warnings.is_empty()
-        || !report.skipped.is_empty()
-        || report.dropped_nodes > 0
-        || report.validation.status == ValidationStatus::PassedWithWarnings
-    {
-        JobStatus::CompletedWithWarnings
-    } else {
-        JobStatus::Completed
-    };
+    let status =
+        if !report.errors.is_empty() || report.validation.status == ValidationStatus::Failed {
+            JobStatus::Failed
+        } else if !report.warnings.is_empty()
+            || !report.skipped.is_empty()
+            || report.dropped_nodes > 0
+            || report.validation.status == ValidationStatus::PassedWithWarnings
+        {
+            JobStatus::CompletedWithWarnings
+        } else {
+            JobStatus::Completed
+        };
     if status == JobStatus::Failed && report.validation.status == ValidationStatus::Failed {
         report.errors.push(
             "The output did not pass validation. It was kept so the mail can still be exported from it, but it should not be trusted as a finished PST.".into(),
@@ -345,7 +363,13 @@ pub fn run_export(id: &str, opts: &ExportOptions, on: Reporter) -> JobReport {
     if !t.phase("Opening source", false) {
         fail!(report, crate::CANCELLED.into());
     }
-    let mut mb = match Mailbox::open(src, OpenOptions { salvage: opts.salvage }, &mut t.engine()) {
+    let mut mb = match Mailbox::open(
+        src,
+        OpenOptions {
+            salvage: opts.salvage,
+        },
+        &mut t.engine(),
+    ) {
         Ok(m) => m,
         Err(e) => fail!(report, e),
     };
@@ -459,7 +483,8 @@ pub fn run_verify(id: &str, source: &str, on: Reporter) -> JobReport {
         r.unresolved
     ));
     let known: std::collections::HashSet<u32> = mb.nodes().iter().map(|n| n.nid).collect();
-    let extra: Vec<&crate::ndb::Node> = r.nodes.iter().filter(|n| !known.contains(&n.nid)).collect();
+    let extra: Vec<&crate::ndb::Node> =
+        r.nodes.iter().filter(|n| !known.contains(&n.nid)).collect();
     if extra.is_empty() {
         report
             .notes
@@ -478,9 +503,9 @@ pub fn run_verify(id: &str, source: &str, on: Reporter) -> JobReport {
         return report;
     }
     let carved = mb.pst_mut().carve().len();
-    report
-        .notes
-        .push(format!("{carved} blocks can be carved out of the file with no index at all."));
+    report.notes.push(format!(
+        "{carved} blocks can be carved out of the file with no index at all."
+    ));
 
     // The folders' own tables against the index's parent pointers.
     if !t.phase("Cross-checking folder tables", false) {
@@ -492,9 +517,16 @@ pub fn run_verify(id: &str, source: &str, on: Reporter) -> JobReport {
         nodes.iter().map(|n| (n.nid, *n)).collect();
     let (mut compared, mut disagree) = (0usize, 0usize);
     for f in nodes.iter().filter(|n| n.nid_type() == 0x02) {
-        for (table_type, want) in [(0x0Du32, [0x02u8, 0x03].as_slice()), (0x0E, [0x04].as_slice())] {
-            let Some(tnode) = by_nid.get(&((f.nid & !0x1F) | table_type)) else { continue };
-            let Ok(tc) = crate::ltp::read_tc(mb.pst_mut(), tnode.bid_data, tnode.bid_sub) else { continue };
+        for (table_type, want) in [
+            (0x0Du32, [0x02u8, 0x03].as_slice()),
+            (0x0E, [0x04].as_slice()),
+        ] {
+            let Some(tnode) = by_nid.get(&((f.nid & !0x1F) | table_type)) else {
+                continue;
+            };
+            let Ok(tc) = crate::ltp::read_tc(mb.pst_mut(), tnode.bid_data, tnode.bid_sub) else {
+                continue;
+            };
             let listed: std::collections::BTreeSet<u32> = tc.rows.iter().map(|r| r.id).collect();
             let pointed: std::collections::BTreeSet<u32> = nodes
                 .iter()

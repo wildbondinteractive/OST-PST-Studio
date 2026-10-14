@@ -2,6 +2,12 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { useApp } from "./lib/store";
+
+// Development only: lets the UI test harness (scripts/cdp.py) drive the store directly.
+if (import.meta.env.DEV) {
+  (window as unknown as { __ostpst: typeof useApp }).__ostpst = useApp;
+}
 
 // A right-click on an input is still useful; everywhere else the browser menu is noise
 // in a desktop application and the app provides its own.

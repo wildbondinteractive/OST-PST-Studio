@@ -116,15 +116,15 @@ impl Section {
 
 /// Which map pages a section at AMap index `i` carries, beyond the AMap itself.
 fn has_pmap(i: u64) -> bool {
-    i % AMAPS_PER_PMAP == 0
+    i.is_multiple_of(AMAPS_PER_PMAP)
 }
 fn has_fmap(i: u64) -> bool {
-    i >= HEADER_FMAP_COVERS && (i - HEADER_FMAP_COVERS) % AMAPS_PER_FMAP_PAGE == 0
+    i >= HEADER_FMAP_COVERS && (i - HEADER_FMAP_COVERS).is_multiple_of(AMAPS_PER_FMAP_PAGE)
 }
 fn has_fpmap(i: u64) -> bool {
     let pmaps_before_header_end = HEADER_FPMAP_COVERS * AMAPS_PER_PMAP;
     i >= pmaps_before_header_end
-        && (i - pmaps_before_header_end) % (PMAPS_PER_FPMAP_PAGE * AMAPS_PER_PMAP) == 0
+        && (i - pmaps_before_header_end).is_multiple_of(PMAPS_PER_FPMAP_PAGE * AMAPS_PER_PMAP)
 }
 
 /// A map page: 496 bytes of data and a trailer whose id is its own offset.
@@ -175,7 +175,9 @@ pub fn write_allocation_maps(path: &Path) -> Result<String, String> {
         }
     };
     let mark = |sections: &mut Vec<Section>, from: u64, len: u64| {
-        let Some(first) = section_of(from) else { return };
+        let Some(first) = section_of(from) else {
+            return;
+        };
         let last = section_of(from + len - 1).unwrap_or(first);
         for s in first..=last.min(sections.len() - 1) {
             sections[s].mark(from, len);
@@ -226,14 +228,17 @@ pub fn write_allocation_maps(path: &Path) -> Result<String, String> {
         total_free += s.free_slots() as u64 * 64;
         fmap_bytes.push(s.longest_free_run());
         f.seek(SeekFrom::Start(s.at)).map_err(io)?;
-        f.write_all(&map_page(PTYPE_AMAP, s.at, &s.bits)).map_err(io)?;
+        f.write_all(&map_page(PTYPE_AMAP, s.at, &s.bits))
+            .map_err(io)?;
 
         if has_pmap(i as u64) {
             // One bit per page across this PMap's eight sections; 0 means free.
             let mut bits = [0u8; MAP_BYTES];
             let mut any_free = false;
             for k in 0..AMAPS_PER_PMAP as usize {
-                let Some(sec) = sections.get(i + k) else { break };
+                let Some(sec) = sections.get(i + k) else {
+                    break;
+                };
                 for p in 0..(AMAP_EVERY / PAGE) {
                     let page = sec.at + p * PAGE;
                     let bit = k as u64 * (AMAP_EVERY / PAGE) + p;
@@ -276,9 +281,8 @@ pub fn write_allocation_maps(path: &Path) -> Result<String, String> {
         let first_pmap = i as u64 / AMAPS_PER_PMAP;
         let mut data = [0xFFu8; MAP_BYTES];
         for bit in 0..(MAP_BYTES as u64 * 8) {
-            match pmap_full.get((first_pmap + bit) as usize) {
-                Some(false) => data[(bit / 8) as usize] &= !(0x80 >> (bit % 8)),
-                _ => {}
+            if let Some(false) = pmap_full.get((first_pmap + bit) as usize) {
+                data[(bit / 8) as usize] &= !(0x80 >> (bit % 8))
             }
         }
         let at = s.at + 3 * PAGE;
@@ -307,12 +311,20 @@ pub fn write_allocation_maps(path: &Path) -> Result<String, String> {
     let mut header = vec![0u8; 564];
     f.seek(SeekFrom::Start(0)).map_err(io)?;
     f.read_exact(&mut header).map_err(io)?;
-    let mut next_p = u64::from_le_bytes(header[OFF_BID_NEXT_P..OFF_BID_NEXT_P + 8].try_into().unwrap());
+    let mut next_p = u64::from_le_bytes(
+        header[OFF_BID_NEXT_P..OFF_BID_NEXT_P + 8]
+            .try_into()
+            .unwrap(),
+    );
     let dl_bid = next_p;
     next_p += 4;
     dlist[TRAILER_AT] = PTYPE_DLIST;
     dlist[TRAILER_AT + 1] = PTYPE_DLIST;
-    put16(&mut dlist, TRAILER_AT + 2, crate::repair::sig(DLIST_AT, dl_bid));
+    put16(
+        &mut dlist,
+        TRAILER_AT + 2,
+        crate::repair::sig(DLIST_AT, dl_bid),
+    );
     put64(&mut dlist, TRAILER_AT + 8, dl_bid);
     let crc = crc32(&dlist[..TRAILER_AT]);
     put32(&mut dlist, TRAILER_AT + 4, crc);
@@ -432,7 +444,10 @@ mod tests {
         }
         let dl = back.raw_page(DLIST_AT).unwrap();
         assert_eq!(dl[TRAILER_AT], PTYPE_DLIST);
-        assert_eq!(crc32(&dl[..TRAILER_AT]), u32::from_le_bytes(dl[500..504].try_into().unwrap()));
+        assert_eq!(
+            crc32(&dl[..TRAILER_AT]),
+            u32::from_le_bytes(dl[500..504].try_into().unwrap())
+        );
         // And the nodes are all still there.
         assert_eq!(back.nodes().len(), nodes.len());
         let _ = std::fs::remove_file(out);

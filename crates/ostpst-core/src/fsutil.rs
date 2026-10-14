@@ -229,7 +229,10 @@ mod tests {
                 matches!(parts.next(), Some(std::path::Component::Normal(_))),
                 "{nasty:?} -> {s:?} is not a plain name"
             );
-            assert!(parts.next().is_none(), "{nasty:?} -> {s:?} has several parts");
+            assert!(
+                parts.next().is_none(),
+                "{nasty:?} -> {s:?} has several parts"
+            );
             assert!(!s.is_empty());
             assert!(!s.ends_with('.'));
         }
@@ -250,7 +253,10 @@ mod tests {
         assert_eq!(resolve_output(&target, Collision::Fail).unwrap(), target);
         std::fs::write(&target, b"x").unwrap();
         assert!(resolve_output(&target, Collision::Fail).is_err());
-        assert_eq!(resolve_output(&target, Collision::Overwrite).unwrap(), target);
+        assert_eq!(
+            resolve_output(&target, Collision::Overwrite).unwrap(),
+            target
+        );
         assert_eq!(
             resolve_output(&target, Collision::Rename).unwrap(),
             dir.join("out (2).pst")

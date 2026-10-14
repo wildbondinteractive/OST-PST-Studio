@@ -48,7 +48,11 @@ pub fn validate_output(path: &Path, expected: &Expected, on: crate::Progress) ->
 
     let mut mb = match Mailbox::open(path, OpenOptions { salvage: false }, &mut crate::silent()) {
         Ok(m) => {
-            push("Reopen", CheckStatus::Passed, "the file opens from its own header and index".into());
+            push(
+                "Reopen",
+                CheckStatus::Passed,
+                "the file opens from its own header and index".into(),
+            );
             m
         }
         Err(e) => {
@@ -160,7 +164,10 @@ pub fn validate_output(path: &Path, expected: &Expected, on: crate::Progress) ->
         } else {
             CheckStatus::Failed
         },
-        format!("{} in output, {} in source", info.folder_count, expected.folders),
+        format!(
+            "{} in output, {} in source",
+            info.folder_count, expected.folders
+        ),
     );
     push(
         "Message count",
@@ -171,7 +178,10 @@ pub fn validate_output(path: &Path, expected: &Expected, on: crate::Progress) ->
         } else {
             CheckStatus::Failed
         },
-        format!("{} in output, {} in source", info.message_count, expected.messages),
+        format!(
+            "{} in output, {} in source",
+            info.message_count, expected.messages
+        ),
     );
 
     // Every folder readable, and every message readable all the way down.
@@ -184,7 +194,11 @@ pub fn validate_output(path: &Path, expected: &Expected, on: crate::Progress) ->
         } else {
             CheckStatus::Failed
         },
-        format!("{} of {} folders read", folders.len() - unreadable_folders, folders.len()),
+        format!(
+            "{} of {} folders read",
+            folders.len() - unreadable_folders,
+            folders.len()
+        ),
     );
 
     let message_nids: Vec<u32> = mb

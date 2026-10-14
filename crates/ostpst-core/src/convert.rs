@@ -786,7 +786,10 @@ mod tests {
     /// against a store Outlook itself wrote.
     #[test]
     fn a_converted_store_points_at_the_mailbox_and_has_no_password() {
-        let (src, native) = ("../../fixtures/data/example-2013.ost", "../../fixtures/data/dist-list.pst");
+        let (src, native) = (
+            "../../fixtures/data/example-2013.ost",
+            "../../fixtures/data/dist-list.pst",
+        );
         if !std::path::Path::new(src).exists() || !std::path::Path::new(native).exists() {
             eprintln!("skipping: run tests/fetch-fixtures.ps1");
             return;

@@ -120,7 +120,7 @@ fn folder_dir(mb: &Mailbox, folder: u32, root: &Path) -> PathBuf {
 }
 
 fn date_string(ms: Option<i64>) -> String {
-    ms.map(|m| crate::report::iso(m)).unwrap_or_default()
+    ms.map(crate::report::iso).unwrap_or_default()
 }
 
 /// HTML, TXT and JSON: one file per message in a directory per folder, attachments
@@ -302,7 +302,10 @@ fn render_html(d: &MessageDetail, attachments: &[(String, String)]) -> String {
     h.push_str("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-src data: about:;\">");
     h.push_str(&format!("<title>{}</title>", esc(&d.summary.subject)));
     h.push_str("<style>body{font:14px/1.5 Segoe UI,system-ui,sans-serif;color:#1b1b1b;background:#fff;max-width:960px;margin:1.5rem auto;padding:0 1rem}h1{font-size:1.3rem;margin:0 0 .5rem}table.h{border-collapse:collapse;margin-bottom:1rem}table.h th{text-align:left;color:#666;font-weight:600;padding:.15rem 1rem .15rem 0;vertical-align:top;white-space:nowrap}table.h td{padding:.15rem 0}iframe{width:100%;min-height:60vh;border:1px solid #ddd;border-radius:6px;background:#fff}pre{white-space:pre-wrap;font:inherit}.att a{display:inline-block;margin:.2rem .5rem .2rem 0;padding:.25rem .5rem;border:1px solid #ddd;border-radius:6px;color:#1b1b1b;text-decoration:none}</style></head><body>");
-    h.push_str(&format!("<h1>{}</h1><table class=\"h\">", esc(&d.summary.subject)));
+    h.push_str(&format!(
+        "<h1>{}</h1><table class=\"h\">",
+        esc(&d.summary.subject)
+    ));
     let row = |h: &mut String, k: &str, v: String| {
         if !v.is_empty() {
             h.push_str(&format!("<tr><th>{}</th><td>{}</td></tr>", esc(k), esc(&v)));
@@ -348,11 +351,9 @@ fn render_html(d: &MessageDetail, attachments: &[(String, String)]) -> String {
         for a in &d.attachments {
             let label = format!("{} ({})", a.name, crate::fsutil::human_bytes(a.size));
             match attachments.iter().find(|(n, _)| n == &a.name) {
-                Some((_, rel)) => h.push_str(&format!(
-                    "<a href=\"{}\">{}</a>",
-                    esc(rel),
-                    esc(&label)
-                )),
+                Some((_, rel)) => {
+                    h.push_str(&format!("<a href=\"{}\">{}</a>", esc(rel), esc(&label)))
+                }
                 None => h.push_str(&format!("<span>{}</span> ", esc(&label))),
             }
         }
@@ -378,17 +379,50 @@ fn render_html(d: &MessageDetail, attachments: &[(String, String)]) -> String {
 
 /// Every selected item as one CSV row: the listing columns plus contact fields when the
 /// item is a contact. Written UTF-8 with a byte-order mark so Excel reads it as such.
-fn export_csv(mb: &mut Mailbox, messages: &[u32], dir: &Path, on: crate::Progress) -> Result<ExportStats, String> {
+fn export_csv(
+    mb: &mut Mailbox,
+    messages: &[u32],
+    dir: &Path,
+    on: crate::Progress,
+) -> Result<ExportStats, String> {
     let path = unique_in(dir, "export", "csv");
     let mut f = std::fs::File::create(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut st = empty_stats();
     f.write_all(b"\xEF\xBB\xBF").map_err(|e| e.to_string())?;
     let header = [
-        "Folder", "Type", "Subject", "From", "From Email", "To", "Date (UTC)", "Size", "Attachments",
-        "Full Name", "First Name", "Last Name", "Company", "Job Title", "E-mail", "E-mail 2",
-        "E-mail 3", "Business Phone", "Home Phone", "Mobile", "Business Address", "Home Address",
+        "Folder",
+        "Type",
+        "Subject",
+        "From",
+        "From Email",
+        "To",
+        "Date (UTC)",
+        "Size",
+        "Attachments",
+        "Full Name",
+        "First Name",
+        "Last Name",
+        "Company",
+        "Job Title",
+        "E-mail",
+        "E-mail 2",
+        "E-mail 3",
+        "Business Phone",
+        "Home Phone",
+        "Mobile",
+        "Business Address",
+        "Home Address",
     ];
-    writeln!(f, "{}", header.iter().map(|h| csv_field(h)).collect::<Vec<_>>().join(",")).map_err(|e| e.to_string())?;
+    writeln!(
+        f,
+        "{}",
+        header
+            .iter()
+            .map(|h| csv_field(h))
+            .collect::<Vec<_>>()
+            .join(",")
+    )
+    .map_err(|e| e.to_string())?;
     let total = messages.len() as u64;
     let mut folders = HashSet::new();
     for (i, nid) in messages.iter().enumerate() {
@@ -405,19 +439,33 @@ fn export_csv(mb: &mut Mailbox, messages: &[u32], dir: &Path, on: crate::Progres
             }
         };
         folders.insert(d.summary.folder);
-        let extra = |k: &str| d.extra.iter().find(|(a, _)| a == k).map(|(_, v)| v.clone()).unwrap_or_default();
+        let extra = |k: &str| {
+            d.extra
+                .iter()
+                .find(|(a, _)| a == k)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default()
+        };
         let to = if d.recipients.is_empty() {
             d.summary.display_to.clone()
         } else {
             d.recipients
                 .iter()
                 .filter(|r| r.kind == 1)
-                .map(|r| if r.email.is_empty() { r.name.clone() } else { r.email.clone() })
+                .map(|r| {
+                    if r.email.is_empty() {
+                        r.name.clone()
+                    } else {
+                        r.email.clone()
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join("; ")
         };
         let fields = [
-            mb.folder(d.summary.folder).map(|f| f.path.clone()).unwrap_or_default(),
+            mb.folder(d.summary.folder)
+                .map(|f| f.path.clone())
+                .unwrap_or_default(),
             format!("{:?}", d.summary.item_type),
             d.summary.subject.clone(),
             d.summary.sender_name.clone(),
@@ -440,7 +488,16 @@ fn export_csv(mb: &mut Mailbox, messages: &[u32], dir: &Path, on: crate::Progres
             extra("Business address"),
             extra("Home address"),
         ];
-        writeln!(f, "{}", fields.iter().map(|x| csv_field(x)).collect::<Vec<_>>().join(",")).map_err(|e| e.to_string())?;
+        writeln!(
+            f,
+            "{}",
+            fields
+                .iter()
+                .map(|x| csv_field(x))
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+        .map_err(|e| e.to_string())?;
         st.messages += 1;
     }
     f.flush().map_err(|e| e.to_string())?;
@@ -473,7 +530,12 @@ fn empty_stats() -> ExportStats {
 
 /// vCard 3.0, one file holding every contact in the selection. Items that are not
 /// contacts are skipped and counted rather than written as empty cards.
-fn export_vcf(mb: &mut Mailbox, messages: &[u32], dir: &Path, on: crate::Progress) -> Result<ExportStats, String> {
+fn export_vcf(
+    mb: &mut Mailbox,
+    messages: &[u32],
+    dir: &Path,
+    on: crate::Progress,
+) -> Result<ExportStats, String> {
     let path = unique_in(dir, "contacts", "vcf");
     let mut out = String::new();
     let mut st = empty_stats();
@@ -496,10 +558,23 @@ fn export_vcf(mb: &mut Mailbox, messages: &[u32], dir: &Path, on: crate::Progres
             skipped += 1;
             continue;
         }
-        let extra = |k: &str| d.extra.iter().find(|(a, _)| a == k).map(|(_, v)| v.clone()).unwrap_or_default();
+        let extra = |k: &str| {
+            d.extra
+                .iter()
+                .find(|(a, _)| a == k)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default()
+        };
         out.push_str("BEGIN:VCARD\r\nVERSION:3.0\r\n");
         let full = extra("Full name");
-        out.push_str(&format!("FN:{}\r\n", vcf_esc(if full.is_empty() { &d.summary.subject } else { &full })));
+        out.push_str(&format!(
+            "FN:{}\r\n",
+            vcf_esc(if full.is_empty() {
+                &d.summary.subject
+            } else {
+                &full
+            })
+        ));
         out.push_str(&format!(
             "N:{};{};{};;\r\n",
             vcf_esc(&extra("Last name")),
@@ -517,7 +592,11 @@ fn export_vcf(mb: &mut Mailbox, messages: &[u32], dir: &Path, on: crate::Progres
                 out.push_str(&format!("{line}:{}\r\n", vcf_esc(&v)));
             }
         }
-        for (k, kind) in [("E-mail", "INTERNET,PREF"), ("E-mail 2", "INTERNET"), ("E-mail 3", "INTERNET")] {
+        for (k, kind) in [
+            ("E-mail", "INTERNET,PREF"),
+            ("E-mail 2", "INTERNET"),
+            ("E-mail 3", "INTERNET"),
+        ] {
             let v = extra(k);
             if !v.is_empty() {
                 out.push_str(&format!("EMAIL;TYPE={kind}:{}\r\n", vcf_esc(&v)));
@@ -553,7 +632,9 @@ fn export_vcf(mb: &mut Mailbox, messages: &[u32], dir: &Path, on: crate::Progres
         st.messages += 1;
     }
     if skipped > 0 {
-        st.errors.push(format!("{skipped} selected item(s) are not contacts and were not written"));
+        st.errors.push(format!(
+            "{skipped} selected item(s) are not contacts and were not written"
+        ));
     }
     std::fs::write(&path, out.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
     st.files = 1;
@@ -574,9 +655,16 @@ fn vcf_esc(s: &str) -> String {
 /// Times are written as UTC (`Z`), because `PidLidAppointmentStartWhole` and
 /// `PidLidAppointmentEndWhole` are stored in UTC. No time zone the file does not record
 /// is claimed. All-day events use `VALUE=DATE`.
-fn export_ics(mb: &mut Mailbox, messages: &[u32], dir: &Path, on: crate::Progress) -> Result<ExportStats, String> {
+fn export_ics(
+    mb: &mut Mailbox,
+    messages: &[u32],
+    dir: &Path,
+    on: crate::Progress,
+) -> Result<ExportStats, String> {
     let path = unique_in(dir, "calendar", "ics");
-    let mut out = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//OST/PST Studio//EN\r\nCALSCALE:GREGORIAN\r\n");
+    let mut out = String::from(
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//OST/PST Studio//EN\r\nCALSCALE:GREGORIAN\r\n",
+    );
     let mut st = empty_stats();
     let total = messages.len() as u64;
     let mut skipped = 0;
@@ -626,8 +714,9 @@ fn export_ics(mb: &mut Mailbox, messages: &[u32], dir: &Path, on: crate::Progres
         let time = |id: Option<u16>| id.and_then(|i| pc.time(i)).filter(|t| *t != 0);
         let (Some(start), Some(end)) = (time(id_start), time(id_end)) else {
             skipped += 1;
-            st.errors
-                .push(format!("appointment 0x{nid:X} has no start or end time and was not written"));
+            st.errors.push(format!(
+                "appointment 0x{nid:X} has no start or end time and was not written"
+            ));
             continue;
         };
         let all_day = id_allday
@@ -640,7 +729,10 @@ fn export_ics(mb: &mut Mailbox, messages: &[u32], dir: &Path, on: crate::Progres
             .map(str::to_string)
             .unwrap_or_else(|| format!("{nid:X}@ostpst.local"));
         out.push_str(&format!("UID:{}\r\n", ics_esc(&uid)));
-        out.push_str(&format!("DTSTAMP:{}\r\n", ics_utc(crate::model::ms_to_filetime(now_ms()))));
+        out.push_str(&format!(
+            "DTSTAMP:{}\r\n",
+            ics_utc(crate::model::ms_to_filetime(now_ms()))
+        ));
         if all_day {
             out.push_str(&format!("DTSTART;VALUE=DATE:{}\r\n", ics_date(start)));
             out.push_str(&format!("DTEND;VALUE=DATE:{}\r\n", ics_date(end)));
@@ -650,20 +742,30 @@ fn export_ics(mb: &mut Mailbox, messages: &[u32], dir: &Path, on: crate::Progres
         }
         out.push_str(&format!(
             "SUMMARY:{}\r\n",
-            ics_esc(crate::ltp::clean_subject(pc.str(crate::ltp::PID_SUBJECT).unwrap_or("")))
+            ics_esc(crate::ltp::clean_subject(
+                pc.str(crate::ltp::PID_SUBJECT).unwrap_or("")
+            ))
         ));
-        if let Some(loc) = id_loc.and_then(|i| pc.str(i)).filter(|s| !s.trim().is_empty()) {
+        if let Some(loc) = id_loc
+            .and_then(|i| pc.str(i))
+            .filter(|s| !s.trim().is_empty())
+        {
             out.push_str(&format!("LOCATION:{}\r\n", ics_esc(loc)));
         }
-        if let Some(cats) = id_cats.and_then(|i| pc.props.get(&i)) {
-            if let Value::Raw { ptype: 0x101F, bytes } = cats {
-                let list = multi_string(bytes, true);
-                if !list.is_empty() {
-                    out.push_str(&format!(
-                        "CATEGORIES:{}\r\n",
-                        list.iter().map(|c| ics_esc(c)).collect::<Vec<_>>().join(",")
-                    ));
-                }
+        if let Some(Value::Raw {
+            ptype: 0x101F,
+            bytes,
+        }) = id_cats.and_then(|i| pc.props.get(&i))
+        {
+            let list = multi_string(bytes, true);
+            if !list.is_empty() {
+                out.push_str(&format!(
+                    "CATEGORIES:{}\r\n",
+                    list.iter()
+                        .map(|c| ics_esc(c))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ));
             }
         }
         if let Some(body) = crate::ltp::body_text(&pc) {

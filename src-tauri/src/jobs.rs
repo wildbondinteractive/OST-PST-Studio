@@ -38,7 +38,9 @@ impl JobSpec {
     }
     fn destination(&self) -> String {
         match self {
-            JobSpec::Convert { options } | JobSpec::Repair { options } => options.destination.clone(),
+            JobSpec::Convert { options } | JobSpec::Repair { options } => {
+                options.destination.clone()
+            }
             JobSpec::Export { options } => options.destination.clone(),
             JobSpec::Verify { .. } => String::new(),
         }
@@ -86,7 +88,13 @@ impl JobManager {
         }
     }
 
-    pub fn start(&self, app: AppHandle, spec: JobSpec, max_concurrent: usize, data_dir: PathBuf) -> String {
+    pub fn start(
+        &self,
+        app: AppHandle,
+        spec: JobSpec,
+        max_concurrent: usize,
+        data_dir: PathBuf,
+    ) -> String {
         let id = super::new_id_pub("job");
         let record = JobRecord {
             id: id.clone(),
@@ -127,7 +135,9 @@ impl JobManager {
                 if inner.running >= max_concurrent {
                     return;
                 }
-                let Some(id) = inner.queue.pop_front() else { return };
+                let Some(id) = inner.queue.pop_front() else {
+                    return;
+                };
                 let cancelled = match inner.jobs.get(&id) {
                     Some(e) => e.cancel.load(Ordering::Relaxed),
                     None => continue,
@@ -135,7 +145,9 @@ impl JobManager {
                 if !cancelled {
                     inner.running += 1;
                 }
-                let Some(e) = inner.jobs.get_mut(&id) else { continue };
+                let Some(e) = inner.jobs.get_mut(&id) else {
+                    continue;
+                };
                 if cancelled {
                     e.record.status = JobStatus::Cancelled;
                     e.record.finished_ms = Some(now_ms());
@@ -151,14 +163,17 @@ impl JobManager {
             let inner = self.inner.clone();
             let app2 = app.clone();
             let data_dir2 = data_dir.clone();
-            let mgr = JobManager { inner: inner.clone() };
+            let mgr = JobManager {
+                inner: inner.clone(),
+            };
             std::thread::Builder::new()
                 .name(format!("job-{id}"))
                 .spawn(move || {
                     let id_for_cb = id.clone();
                     let inner_cb = inner.clone();
                     let app_cb = app2.clone();
-                    let mut last_emit = std::time::Instant::now() - std::time::Duration::from_secs(1);
+                    let mut last_emit =
+                        std::time::Instant::now() - std::time::Duration::from_secs(1);
                     let mut on = move |p: &JobProgress| -> bool {
                         if cancel.load(Ordering::Relaxed) {
                             return false;
@@ -176,8 +191,12 @@ impl JobManager {
                         true
                     };
                     let report = match &spec {
-                        JobSpec::Convert { options } => run_convert(&id, JobKind::Convert, options, &mut on),
-                        JobSpec::Repair { options } => run_convert(&id, JobKind::Repair, options, &mut on),
+                        JobSpec::Convert { options } => {
+                            run_convert(&id, JobKind::Convert, options, &mut on)
+                        }
+                        JobSpec::Repair { options } => {
+                            run_convert(&id, JobKind::Repair, options, &mut on)
+                        }
                         JobSpec::Export { options } => run_export(&id, options, &mut on),
                         JobSpec::Verify { source } => run_verify(&id, source, &mut on),
                     };
@@ -228,11 +247,21 @@ impl JobManager {
     }
 
     pub fn get(&self, id: &str) -> Option<JobRecord> {
-        self.inner.lock().unwrap().jobs.get(id).map(|e| e.record.clone())
+        self.inner
+            .lock()
+            .unwrap()
+            .jobs
+            .get(id)
+            .map(|e| e.record.clone())
     }
 
     pub fn spec_of(&self, id: &str) -> Option<JobSpec> {
-        self.inner.lock().unwrap().jobs.get(id).map(|e| e.spec.clone())
+        self.inner
+            .lock()
+            .unwrap()
+            .jobs
+            .get(id)
+            .map(|e| e.spec.clone())
     }
 
     pub fn clear_finished(&self) {

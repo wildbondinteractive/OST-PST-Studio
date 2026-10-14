@@ -1282,7 +1282,9 @@ impl Pst {
                 if depth > MAX_BTREE_DEPTH || !seen.insert(at.ib) {
                     continue;
                 }
-                let Ok(page) = self.read_page(at) else { continue };
+                let Ok(page) = self.read_page(at) else {
+                    continue;
+                };
                 if page[self.page.trailer] != want {
                     continue;
                 }
@@ -1313,7 +1315,9 @@ impl Pst {
             return Err(format!("page offset {at} is outside the file"));
         }
         let mut buf = vec![0u8; self.page.size as usize];
-        self.file.seek(SeekFrom::Start(at)).map_err(|e| e.to_string())?;
+        self.file
+            .seek(SeekFrom::Start(at))
+            .map_err(|e| e.to_string())?;
         self.file.read_exact(&mut buf).map_err(|e| e.to_string())?;
         Ok(buf)
     }

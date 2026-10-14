@@ -55,7 +55,12 @@ impl Args {
         let mut flags = Vec::new();
         let mut values = Vec::new();
         let valued = [
-            "--folder", "--message", "--limit", "--format", "--report", "--collision",
+            "--folder",
+            "--message",
+            "--limit",
+            "--format",
+            "--report",
+            "--collision",
         ];
         let mut i = 0;
         while i < raw.len() {
@@ -86,7 +91,10 @@ impl Args {
         self.flags.iter().any(|x| x == f)
     }
     fn value(&self, k: &str) -> Option<&str> {
-        self.values.iter().find(|(a, _)| a == k).map(|(_, v)| v.as_str())
+        self.values
+            .iter()
+            .find(|(a, _)| a == k)
+            .map(|(_, v)| v.as_str())
     }
     fn all(&self, k: &str) -> Vec<&str> {
         self.values
@@ -167,7 +175,10 @@ fn folder_arg(mb: &Mailbox, want: &str) -> u32 {
             return nid;
         }
     }
-    die(&format!("no folder called \"{want}\" in this file. `tree` lists them."), 1)
+    die(
+        &format!("no folder called \"{want}\" in this file. `tree` lists them."),
+        1,
+    )
 }
 
 fn nid_arg(s: Option<&String>) -> u32 {
@@ -252,7 +263,10 @@ fn main() {
                 ostpst_core::fsutil::human_bytes(info.declared_bytes)
             );
             println!("  encoding: {}", info.encoding);
-            println!("  health: {:?}, index from {:?}", info.health, info.index_source);
+            println!(
+                "  health: {:?}, index from {:?}",
+                info.health, info.index_source
+            );
             println!(
                 "  {} folders, {} messages, {} nodes, {} blocks",
                 info.folder_count, info.message_count, info.node_count, info.block_count
@@ -270,7 +284,11 @@ fn main() {
                         "    - node 0x{:X}: {} revisions{}",
                         s.nid,
                         s.versions,
-                        if s.dangling { ", data block missing" } else { "" }
+                        if s.dangling {
+                            ", data block missing"
+                        } else {
+                            ""
+                        }
                     );
                 }
             }
@@ -303,7 +321,13 @@ fn main() {
                     (c, 0) => format!("  ({c})"),
                     (c, u) => format!("  ({c}, {u} unread)"),
                 };
-                println!("{}{}{}  [0x{:X}]", "  ".repeat(depth), f.name, counts, f.nid);
+                println!(
+                    "{}{}{}  [0x{:X}]",
+                    "  ".repeat(depth),
+                    f.name,
+                    counts,
+                    f.nid
+                );
                 for c in &f.children {
                     branch(*c, depth + 1, by);
                 }
@@ -320,7 +344,10 @@ fn main() {
         "list" => {
             let file = args.positional.first().unwrap_or_else(|| die(USAGE, 2));
             let mut mb = open(file, salvage, quiet);
-            let limit: usize = args.value("--limit").and_then(|v| v.parse().ok()).unwrap_or(usize::MAX);
+            let limit: usize = args
+                .value("--limit")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(usize::MAX);
             let folders: Vec<u32> = match args.value("--folder") {
                 Some(f) => {
                     let root = folder_arg(&mb, f);
@@ -333,23 +360,36 @@ fn main() {
             for f in folders {
                 rows.extend(mb.all_summaries(f));
             }
-            rows.sort_by(|a, b| b.date_ms.cmp(&a.date_ms));
+            rows.sort_by_key(|m| std::cmp::Reverse(m.date_ms));
             rows.truncate(limit);
             if json {
                 print_json(&rows);
                 return;
             }
-            println!("{:<10}  {:<19}  {:<20}  {:<20}  subject", "nid", "date (UTC)", "folder", "from");
+            println!(
+                "{:<10}  {:<19}  {:<20}  {:<20}  subject",
+                "nid", "date (UTC)", "folder", "from"
+            );
             for m in &rows {
                 println!(
                     "0x{:<8X}  {:<19}  {:<20}  {:<20}  {}{}{}",
                     m.nid,
                     date(m.date_ms),
-                    trim(names.get(&m.folder).map(String::as_str).unwrap_or("(no folder)"), 20),
+                    trim(
+                        names
+                            .get(&m.folder)
+                            .map(String::as_str)
+                            .unwrap_or("(no folder)"),
+                        20
+                    ),
                     trim(&m.sender_name, 20),
                     m.subject,
                     if m.has_attachments { "  [att]" } else { "" },
-                    if m.size > 0 { format!("  [{} bytes]", m.size) } else { String::new() }
+                    if m.size > 0 {
+                        format!("  [{} bytes]", m.size)
+                    } else {
+                        String::new()
+                    }
                 );
             }
             println!("\n{} message(s).", rows.len());
@@ -364,7 +404,10 @@ fn main() {
                 return;
             }
             println!("Subject: {}", d.summary.subject);
-            println!("From: {} <{}>", d.summary.sender_name, d.summary.sender_email);
+            println!(
+                "From: {} <{}>",
+                d.summary.sender_name, d.summary.sender_email
+            );
             for (k, label) in [(1, "To"), (2, "Cc"), (3, "Bcc")] {
                 let list: Vec<String> = d
                     .recipients
@@ -377,14 +420,21 @@ fn main() {
                 }
             }
             println!("Date: {}", date(d.summary.date_ms));
-            println!("Class: {}  Size: {}  Type: {:?}", d.summary.message_class, d.summary.size, d.summary.item_type);
+            println!(
+                "Class: {}  Size: {}  Type: {:?}",
+                d.summary.message_class, d.summary.size, d.summary.item_type
+            );
             for a in &d.attachments {
                 println!(
                     "Attachment: {} ({}, {}){}",
                     a.name,
                     ostpst_core::fsutil::human_bytes(a.size),
                     a.mime,
-                    if a.is_embedded_message { " [embedded message]" } else { "" }
+                    if a.is_embedded_message {
+                        " [embedded message]"
+                    } else {
+                        ""
+                    }
                 );
             }
             for (k, v) in &d.extra {
@@ -423,9 +473,15 @@ fn main() {
             let file = args.positional.first().unwrap_or_else(|| die(USAGE, 2));
             let text = args.positional.get(1).cloned().unwrap_or_default();
             let mut mb = open(file, salvage, quiet);
-            let any = ["--subject", "--sender", "--body", "--recipients", "--attachments"]
-                .iter()
-                .any(|f| args.flag(f));
+            let any = [
+                "--subject",
+                "--sender",
+                "--body",
+                "--recipients",
+                "--attachments",
+            ]
+            .iter()
+            .any(|f| args.flag(f));
             let q = SearchQuery {
                 text,
                 in_subject: !any || args.flag("--subject"),
@@ -438,7 +494,7 @@ fn main() {
                 ..Default::default()
             };
             let mut on = |done: u64, total: u64| {
-                if !quiet && done % 500 == 0 {
+                if !quiet && done.is_multiple_of(500) {
                     eprint!("\r  searched {done} of {total}   ");
                 }
                 true
@@ -473,10 +529,23 @@ fn main() {
             );
         }
         "export" => {
-            let file = args.positional.first().unwrap_or_else(|| die(USAGE, 2)).clone();
-            let dir = args.positional.get(1).unwrap_or_else(|| die(USAGE, 2)).clone();
+            let file = args
+                .positional
+                .first()
+                .unwrap_or_else(|| die(USAGE, 2))
+                .clone();
+            let dir = args
+                .positional
+                .get(1)
+                .unwrap_or_else(|| die(USAGE, 2))
+                .clone();
             let format = match args.value("--format") {
-                Some(f) => ExportFormat::parse(f).unwrap_or_else(|| die("--format takes eml, msg, mbox, html, txt, csv, vcf, ics or json", 2)),
+                Some(f) => ExportFormat::parse(f).unwrap_or_else(|| {
+                    die(
+                        "--format takes eml, msg, mbox, html, txt, csv, vcf, ics or json",
+                        2,
+                    )
+                }),
                 None => ExportFormat::Eml,
             };
             let folders = args.all("--folder");
@@ -493,7 +562,10 @@ fn main() {
                     folders: folders.iter().map(|f| folder_arg(&mb, f)).collect(),
                     messages: messages
                         .iter()
-                        .map(|m| u32::from_str_radix(m.trim_start_matches("0x"), 16).unwrap_or_else(|_| die("--message takes a node id in hex", 2)))
+                        .map(|m| {
+                            u32::from_str_radix(m.trim_start_matches("0x"), 16)
+                                .unwrap_or_else(|_| die("--message takes a node id in hex", 2))
+                        })
                         .collect(),
                 }
             };
@@ -510,8 +582,16 @@ fn main() {
             finish_job(&args, r);
         }
         "convert" | "repair" => {
-            let file = args.positional.first().unwrap_or_else(|| die(USAGE, 2)).clone();
-            let out = args.positional.get(1).unwrap_or_else(|| die(USAGE, 2)).clone();
+            let file = args
+                .positional
+                .first()
+                .unwrap_or_else(|| die(USAGE, 2))
+                .clone();
+            let out = args
+                .positional
+                .get(1)
+                .unwrap_or_else(|| die(USAGE, 2))
+                .clone();
             let opts = ConvertOptions {
                 source: file,
                 destination: out,
@@ -520,12 +600,20 @@ fn main() {
                 validate: !args.flag("--no-validate"),
                 write_allocation_maps: !args.flag("--no-maps"),
             };
-            let kind = if args.command == "convert" { JobKind::Convert } else { JobKind::Repair };
+            let kind = if args.command == "convert" {
+                JobKind::Convert
+            } else {
+                JobKind::Repair
+            };
             let r = run_convert("cli", kind, &opts, &mut progress(quiet));
             finish_job(&args, r);
         }
         "verify" => {
-            let file = args.positional.first().unwrap_or_else(|| die(USAGE, 2)).clone();
+            let file = args
+                .positional
+                .first()
+                .unwrap_or_else(|| die(USAGE, 2))
+                .clone();
             let r = run_verify("cli", &file, &mut progress(quiet));
             finish_job(&args, r);
         }
