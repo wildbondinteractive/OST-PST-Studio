@@ -19,11 +19,30 @@ separately everywhere in the application.
    Outlook read it without asking for the Inbox Repair Tool. This is the only level that
    is a statement about Outlook, and it is recorded here only when it has been done.
 
+## Findings from opening files in Outlook
+
+**2026-10-14, Outlook classic (Microsoft 365), converted `example-2013.ost`, first
+build.** The store attached, but the folder pane sat spinning and never loaded. Cause
+found afterwards by comparing the file with a PST Outlook wrote: every entry id on the
+OST's store and folders (`PidTagIpmAppointmentEntryId`, `PidTagAdditionalRenEntryIds`,
+the Drafts, Outbox and Sent Items links, and more) still named the Exchange store's GUID,
+which the PST provider cannot resolve. The converter now re-points those links at the
+new file's own folders by container class and name, removes the ones that cannot be
+resolved, and fills in the full `PidTagValidFolderMask` (`crates/ostpst-core/src/ostfix.rs`).
+Whether that is the whole story has not been confirmed in Outlook yet; it was the only
+structural difference found between the converted file and a native PST at the store
+and folder level.
+
+Lesson for the check itself: a store that Outlook cannot finish loading stays attached
+to the profile until it is removed, and the profile spins at every start. The check now
+insists on a throwaway profile (`OUTLOOK.EXE /pim OSTPST-Test`).
+
 ## Current standing (2026-10-14)
 
 | Output | Engine validation | libpff | Outlook |
 |---|---|---|---|
-| `example-2013.ost` converted to PST, maps written | Passed, 11 checks | Identical: 46 folders, 3 messages, 202 properties | Not yet opened |
+| `example-2013.ost` converted to PST, maps written, first build | Passed, 11 checks | Identical: 46 folders, 3 messages, 202 properties | Attached; folder never loaded (see findings) |
+| `example-2013.ost` converted with re-pointed links, maps written | Passed, 11 checks | Identical | Not yet opened |
 | `dist-list.pst` repaired to a new PST, maps written | Passed | Identical: 24 folders, 4 messages, 287 properties | Not yet opened |
 | `dist-list.pst` with both B-tree roots zeroed, salvaged and repaired | Passed (upstream test) | libpff reads all 4 messages (upstream bake-off) | Not yet opened |
 

@@ -22,7 +22,7 @@ browsing and export. Rust engine (forked from pstfree, MIT) + Tauri 2 + React/Ty
 ```
 Cargo.toml              workspace: crates/ostpst-core, crates/ostpst-cli, src-tauri
 crates/ostpst-core      engine. ndb/ltp/convert/repair/export/crypt/cfbf/html are upstream;
-                        mailbox/model/jobs/report/validate/amap/cache/exporters/fsutil/props are new
+                        mailbox/model/jobs/report/validate/amap/cache/ostfix/exporters/fsutil/props are new
 crates/ostpst-cli       `ostpst` command line (technicians, automation, --json)
 src-tauri               Tauri host: commands (lib.rs), job manager (jobs.rs), settings.rs
 src                     React UI: lib/api.ts mirrors model.rs; pages/*, components/*

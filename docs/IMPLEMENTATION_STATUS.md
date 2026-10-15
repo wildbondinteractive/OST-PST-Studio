@@ -30,7 +30,8 @@ what is verified, and what is next. Pair it with `docs/TEST_RESULTS.md`.
 
 | Item | State |
 |---|---|
-| Valid allocation maps so Outlook does not ask for SCANPST | Implemented, verified by engine and libpff, **not yet opened in Outlook** |
+| Valid allocation maps so Outlook does not ask for SCANPST | Implemented, verified by engine and libpff, **not yet confirmed in Outlook** |
+| OST store and folder links re-pointed at the PST (`ostfix.rs`) | Implemented after the first Outlook test showed a folder that never loaded; not yet re-tested in Outlook |
 | Upstream defects addressed | Cancellation, safe writes, TC-based listings, embedded message access, sender fallbacks |
 | Advanced search (text in subject/sender/recipients/body/attachment names; date, size, type, importance, attachments, unread) | Done |
 | Batch processing with concurrency, per-file reports, retry | Done |
@@ -38,7 +39,7 @@ what is verified, and what is next. Pair it with `docs/TEST_RESULTS.md`.
 | Rich preview (sandboxed HTML, remote content blocked with per-message override, images and text attachments, SHA-256) | Done |
 | Activity history and reports | Done |
 | Repair and recovery workflows (verify, salvage mode, repair to new file) | Done |
-| Regression tests | Upstream suite carried over (68) plus new tests; 85 total |
+| Regression tests | Upstream suite carried over (68) plus new tests; 86 total |
 | Saved search presets | Done (local storage, per machine) |
 | Keyboard navigation of the message list (arrows, Home/End, Ctrl+A, Enter) | Done |
 
@@ -65,8 +66,10 @@ not something an app should fake with per-message Graph writes.
 
 ## Known concerns
 
-1. Outlook has not opened a file written by this build. `scripts/outlook-check.ps1` is
-   the manual workflow; record results in `docs/OUTLOOK_COMPATIBILITY.md`.
+1. Outlook attached the first converted build but never finished loading a folder; the
+   cause (Exchange entry ids left on the store and folders) is fixed in `ostfix.rs` and
+   the fixed output has not been opened in Outlook yet. Use `scripts/outlook-check.ps1`
+   with a throwaway profile and record results in `docs/OUTLOOK_COMPATIBILITY.md`.
 2. FMap/FPMap placement beyond 125 MB / 2 GB is derived from the specification's
    figures; no Outlook-written file of that size has been examined.
 3. OST sync-state nodes (0x14 to 0x19) are carried into converted PSTs as upstream does.

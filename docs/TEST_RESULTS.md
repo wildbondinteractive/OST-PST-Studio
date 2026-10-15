@@ -12,7 +12,7 @@ it; recorded when done).
 
 | Suite | Count | Result |
 |---|---|---|
-| `ostpst-core` unit tests (upstream 60 + new 17) | 77 | PASS |
+| `ostpst-core` unit tests (upstream 60 + new 18) | 78 | PASS |
 | `ostpst-core` ANSI PST fixture tests | 7 | PASS |
 | `ostpst-core` fuzz (8 rounds per fixture, sector-aligned damage) | 1 | PASS, no panic, no hang |
 | `cargo clippy --workspace --all-targets -- -D warnings` | | PASS (clean) |
@@ -22,7 +22,8 @@ New tests beyond upstream: `fsutil` (name sanitisation, collision policy, temp-f
 commit, sizes), `mailbox` (open PST and OST, folder tree and kinds, listing from the
 contents table, message detail, search by subject and body, filter-only search, search
 cancellation, torn file opens as recovered, salvage mode labels swept deleted items as
-recovered), `cache` (entry reused only for the identical file), `amap` (map recurrence arithmetic; a
+recovered), `cache` (entry reused only for the identical file), `ostfix` (folder roles
+resolve by class and name in the OST), `amap` (map recurrence arithmetic; a
 rebuilt PST gets valid maps that cover every block and page, a valid DList, and reopens
 with no warnings), `exporters` (CSV quoting, iCalendar times and folding, HTML export
 sandboxing).
@@ -97,7 +98,8 @@ message counts, every folder readable, every message readable).
 
 | Check | Result |
 |---|---|
-| Converted or repaired PST opened in classic Outlook | MANUAL, not yet done. Use `scripts/outlook-check.ps1` and record in `docs/OUTLOOK_COMPATIBILITY.md` |
+| Converted PST (first build) attached in classic Outlook | MANUAL, done: attached, folder never loaded. Cause found and fixed (foreign entry ids); see `docs/OUTLOOK_COMPATIBILITY.md` |
+| Converted PST with re-pointed links opened in classic Outlook | MANUAL, not yet done. Files for the isolation test are in `fixtures/out/outlook-test/` |
 | `.msg` export opened in Outlook | MANUAL, not yet done |
 
 ## Not covered by any fixture
