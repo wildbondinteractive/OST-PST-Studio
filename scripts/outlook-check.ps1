@@ -48,16 +48,21 @@ if (-not $running) {
 }
 Write-Host "Found running Outlook: $($running[0].MainWindowTitle)"
 
-$scratch = Join-Path $env:TEMP ("ostpst-outlook-check-" + [IO.Path]::GetFileName($Path))
+# A fresh scratch name every run, so a copy a previous Outlook still holds open cannot
+# block this one.
+$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$scratch = Join-Path $env:TEMP ("ostpst-outlook-check-" + $stamp + "-" + [IO.Path]::GetFileName($Path))
 Copy-Item -Force $Path $scratch
 Write-Host "Copied to $scratch (Outlook will open the copy, never the original)."
 
 $answer = Read-Host "Attach this copy to the running Outlook profile and read it back? [y/N]"
 if ($answer -notmatch '^[Yy]') { Write-Host "Nothing done."; exit 0 }
 
+# Outlook is a single-instance COM server: New-Object connects to the running copy
+# rather than starting another, and works in both Windows PowerShell and PowerShell 7.
 Write-Host "Connecting to the running Outlook over COM..."
 try {
-    $outlook = [Runtime.InteropServices.Marshal]::GetActiveObject("Outlook.Application")
+    $outlook = New-Object -ComObject Outlook.Application
 } catch {
     Write-Host "Could not attach to the running Outlook: $($_.Exception.Message)"
     Write-Host "If this terminal is elevated (Administrator) and Outlook is not, or the other way"
