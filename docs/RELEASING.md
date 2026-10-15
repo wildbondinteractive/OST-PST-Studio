@@ -25,7 +25,7 @@ Bump the version in `Cargo.toml` (`workspace.package.version`), `package.json` a
 
 ## Publish on GitHub
 
-The repository is https://github.com/wildbondgames/OST-PST-Studio. Create a release
+The repository is https://github.com/wildbondinteractive/OST-PST-Studio. Create a release
 from the web UI (Releases, "Draft a new release"), tag it `v<version>`, and attach the
 four files above. Suggested release notes: the "What it does" and "Honest limits"
 sections of `README.md`, plus the current `docs/TEST_RESULTS.md` summary line.

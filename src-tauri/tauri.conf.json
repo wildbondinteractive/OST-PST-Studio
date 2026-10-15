@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "OST-PST Studio",
   "version": "0.1.0",
-  "identifier": "com.wildbondgames.ostpststudio",
+  "identifier": "com.wildbondinteractive.ostpststudio",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
