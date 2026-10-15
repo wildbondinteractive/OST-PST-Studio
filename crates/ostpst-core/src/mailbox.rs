@@ -10,8 +10,8 @@
 //! small cache; bodies and attachments are read on demand and never retained.
 
 use crate::ltp::{
-    self, body_text, clean_subject, read_node_pc, read_pc, read_recipients, read_tc, Names, Pc,
-    Value, NID_ROOT_FOLDER, NID_TYPE_ATTACHMENT, NID_TYPE_CONTENTS_TABLE, PID_ATTACH_DATA,
+    self, body_text, clean_subject, read_node_pc, read_pc, read_recipients, read_tc_with, Names,
+    Pc, Value, NID_ROOT_FOLDER, NID_TYPE_ATTACHMENT, NID_TYPE_CONTENTS_TABLE, PID_ATTACH_DATA,
     PID_ATTACH_FILENAME, PID_ATTACH_LONG_FILENAME, PID_ATTACH_METHOD, PID_ATTACH_MIME_TAG,
     PID_BODY_HTML, PID_CONTENT_COUNT, PID_DELIVERY_TIME, PID_DISPLAY_NAME, PID_DISPLAY_TO,
     PID_INTERNET_CODEPAGE, PID_INTERNET_MSG_ID, PID_MESSAGE_SIZE, PID_SENDER_EMAIL,
@@ -547,7 +547,9 @@ impl Mailbox {
         // messages from swept ones; every row is read from its own properties.
         let trust_table = self.info.index_source == IndexSource::Header;
         if let Some(t) = self.by_nid.get(&table_nid).copied() {
-            if let Ok(tc) = read_tc(&mut self.pst, t.bid_data, t.bid_sub) {
+            let by_nid = &self.by_nid;
+            let lookup = |id: u32| by_nid.get(&id).map(|n| (n.bid_data, n.bid_sub));
+            if let Ok(tc) = read_tc_with(&mut self.pst, t.bid_data, t.bid_sub, Some(&lookup)) {
                 have_table = true;
                 for r in tc.rows {
                     rows.insert(r.id, r.props);
@@ -568,7 +570,15 @@ impl Mailbox {
                 // that is not what the table thinks it is, so it is not used either.
                 if props.contains_key(&PID_SUBJECT) || props.contains_key(&PID_MESSAGE_CLASS) {
                     let s = summary_from_props(nid, folder, props, true);
-                    if !has_control_chars(&s.subject) && !has_control_chars(&s.sender_name) {
+                    // A mail with no sender in its row is a row the table could not
+                    // fill in; the message itself knows, and one read settles it.
+                    let senderless = s.item_type == ItemType::Mail
+                        && s.sender_name.is_empty()
+                        && s.sender_email.is_empty();
+                    if !has_control_chars(&s.subject)
+                        && !has_control_chars(&s.sender_name)
+                        && !senderless
+                    {
                         out.push(s);
                         continue;
                     }

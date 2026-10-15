@@ -1,6 +1,6 @@
 # Test results
 
-Last run 2026-10-14 on Windows 11 Pro 10.0.26300, Rust 1.99.0 (MSVC), Node 24.18,
+Last run 2026-10-15 on Windows 11 Pro 10.0.26300, Rust 1.99.0 (MSVC), Node 24.18,
 WebView2 155. Fixtures: `dist-list.pst`, `passworded.pst`, `example-2013.ost` from
 hrbrmstr/freepst (fetched by `scripts/fetch-fixtures.ps1`), plus a synthetic ANSI PST the
 tests write themselves and damaged copies the tests make from the fixtures.
@@ -12,7 +12,7 @@ it; recorded when done).
 
 | Suite | Count | Result |
 |---|---|---|
-| `ostpst-core` unit tests (upstream 60 + new 18) | 78 | PASS |
+| `ostpst-core` unit tests (upstream 60 + new 24) | 84 | PASS |
 | `ostpst-core` ANSI PST fixture tests | 7 | PASS |
 | `ostpst-core` fuzz (8 rounds per fixture, sector-aligned damage) | 1 | PASS, no panic, no hang |
 | `cargo clippy --workspace --all-targets -- -D warnings` | | PASS (clean) |
@@ -26,7 +26,9 @@ recovered), `cache` (entry reused only for the identical file), `ostfix` (folder
 resolve by class and name in the OST), `amap` (map recurrence arithmetic; a
 rebuilt PST gets valid maps that cover every block and page, a valid DList, and reopens
 with no warnings), `exporters` (CSV quoting, iCalendar times and folding, HTML export
-sandboxing).
+sandboxing), `heapw` (heap blocks fill and read back, the bitmap-header block keeps its
+map, B-trees with an index level round-trip and sort by key, a property context with a
+spilled value round-trips, fill levels), `ltp` (4K heap ids split differently).
 
 ## Automated: independent verification (`tests/libpff_compare.py`)
 
@@ -35,6 +37,21 @@ sandboxing).
 | `example-2013.ost` converted with allocation maps (CLI) | 46 folders, 3 messages, 202 properties | 46 / 3 / 202 | PASS, identical id for id |
 | `example-2013.ost` converted with allocation maps (GUI) | same | same | PASS |
 | `dist-list.pst` repaired with allocation maps | 24 folders, 4 messages, 287 properties | 24 / 4 / 287 | PASS |
+
+## Real mailbox: 1.57 GB Outlook 2016 OST (not committed, not a fixture)
+
+A cached Exchange mailbox from the developer's own PC: 26,417 messages, 1,088 folders,
+33,871 nodes, 343,824 blocks, Unicode 4K layout. Used to find and fix the two 0.1.0
+defects below; it is private and is never added to the repository.
+
+| Check | Before (0.1.0) | After (0.1.1) |
+|---|---|---|
+| Open, index from header | PASS | PASS |
+| Inbox listing from the contents table (25,191 rows) | 25,191 rows, 0 with a sender, most with no subject | 25,191 rows, 25,191 with a sender, 25,187 with a subject, 0.44 s |
+| Convert to PST (2.8 GB written) | 14.5 s; validation FAIL: 25,288 of 26,417 messages unreadable, 25,803 skipped items | 26 s; all 11 checks PASS: 1,088 of 1,088 folders and 26,417 of 26,417 messages readable, 12,430 attachments; 3 internal nodes of unknown heap type reported |
+| Converted PST's Inbox listed from its own contents table | not applicable | 25,191 rows, identical to the source row for row in subject, sender, date and size |
+| libpff on the source | libpff fails on the source itself (`unable to retrieve sub message: 25182`), so it cannot judge the output | same |
+| Opened in Outlook | MANUAL, not done | MANUAL, not yet done |
 
 ## Engine validation of written files (`validate.rs`, 11 checks)
 

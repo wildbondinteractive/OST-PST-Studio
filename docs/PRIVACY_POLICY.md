@@ -1,6 +1,6 @@
 # Privacy policy
 
-OST/PST Studio, version 0.1.0. Last updated 2026-10-14.
+OST/PST Studio, version 0.1.1. Last updated 2026-10-15.
 
 This policy describes what the application does with the data it handles. It is written
 to match the code as shipped; where the code changes, this document is updated with it.

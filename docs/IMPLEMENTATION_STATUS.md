@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated 2026-10-14. This is the hand-off document: what exists, how it is wired,
+Last updated 2026-10-15. This is the hand-off document: what exists, how it is wired,
 what is verified, and what is next. Pair it with `docs/TEST_RESULTS.md`.
 
 ## Phase 1: architecture and functional foundation (done)
@@ -10,6 +10,8 @@ what is verified, and what is next. Pair it with `docs/TEST_RESULTS.md`.
 | Upstream audit | Done | `docs/UPSTREAM_AUDIT.md` |
 | Independent project, MIT with attribution | Done | `LICENSE`, banners on carried-over files |
 | Engine integrated, cancellation added | Done | `crates/ostpst-core/src/{ndb,ltp,convert,repair,export,...}.rs`; `Progress` returns `bool` |
+| 4K OST heaps read with their own id layout (13-bit block, 14-bit index) and auxiliary table heaps (subnodes 0x521/0x541, client 0xA5) resolved per column | Done, verified on a 1.57 GB Outlook 2016 OST | `ltp.rs`: `Heap::with_layout`, `node_heap`, `table_heaps`, `column_homes` |
+| OST to PST conversion rebuilds every heap for the PST layout instead of copying blocks | Done: PCs re-serialised, TCs re-pointed and row matrices re-packed, values over 3,580 bytes spilled to subnodes, auxiliary heaps folded in | `heapw.rs`; `convert.rs` `Out::node` |
 | High-level mailbox API | Done | `mailbox.rs`: open with sweep/carve fallback, folder tree, paged listings from contents tables, message detail, attachments, embedded messages, search with filters |
 | Serialisable model | Done | `model.rs`, mirrored in `src/lib/api.ts` |
 | Jobs: convert, repair, export, verify | Done | `jobs.rs`; temp file + rename, disk-space check, collision policy |
@@ -70,9 +72,15 @@ not something an app should fake with per-message Graph writes.
 ## Known concerns
 
 1. Outlook compatibility has been confirmed on the two public fixtures only (one OST,
-   one PST). Larger and more varied real-world files have not been opened in Outlook.
-   Use `scripts/outlook-check.ps1` with a throwaway profile and record results in
+   one PST). A 1.57 GB real OST now converts to a file that validates fully and lists
+   identically, but that output has not been opened in Outlook yet. Use
+   `scripts/outlook-check.ps1` with a throwaway profile and record results in
    `docs/OUTLOOK_COMPATIBILITY.md`.
+8. Which heap a contents-table column lives in (the table's own or an auxiliary one) is
+   not stated anywhere in an OST; it is inferred from the data, by checking a sample of
+   rows against their messages. In every file seen so far the auxiliary heaps hold
+   exactly two columns, 0x0042 and 0x3013. Heaps of client types 0x8C and 0xCC (seen on
+   three internal nodes of the real OST) are not understood and are copied as they are.
 2. FMap/FPMap placement beyond 125 MB / 2 GB is derived from the specification's
    figures; no Outlook-written file of that size has been examined.
 3. OST sync-state nodes (0x14 to 0x19) are carried into converted PSTs as upstream does.

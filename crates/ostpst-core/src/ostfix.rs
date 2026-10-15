@@ -24,7 +24,7 @@
 //! still gets its Calendar and Contacts by class; only Drafts, Outbox and Sent Items
 //! depend on the name, and a miss there costs a link, not data.
 
-use crate::convert::{pc_heap, Hnid};
+use crate::convert::Hnid;
 use crate::ltp::{bth_records, is_inline, read_node_pc, Heap, NID_ROOT_FOLDER};
 use crate::ndb::{Node, Pst};
 use std::collections::BTreeMap;
@@ -127,7 +127,7 @@ pub(crate) type RawProps = BTreeMap<u16, (u16, Hnid)>;
 
 /// A property context's records, exactly as stored, keyed by property id.
 pub(crate) fn raw_props(pst: &mut Pst, bid_data: u64) -> Result<(Heap, RawProps), String> {
-    let heap = Heap::new(pst.node_blocks(bid_data)?)?;
+    let heap = crate::ltp::node_heap(pst, bid_data)?;
     let (_, records) = bth_records(&heap)?;
     let mut props = BTreeMap::new();
     for r in records.iter().filter(|r| r.len() >= 8) {
@@ -297,7 +297,7 @@ impl Special {
     /// The message store as a PST needs it: every property the OST's store had that a
     /// PST can use, the entry ids MS-PST 2.4.3.1 requires and the ones a PST normally
     /// carries, a display name, and a password of 0.
-    pub fn store_heap(&self, pst: &mut Pst, store: &Node) -> Result<Vec<u8>, String> {
+    pub(crate) fn store_props(&self, pst: &mut Pst, store: &Node) -> Result<RawProps, String> {
         let (_, mut props) = raw_props(pst, store.bid_data)?;
 
         let mut mask = MASK_SUBTREE | MASK_WASTEBASKET | MASK_FINDER;
@@ -344,7 +344,7 @@ impl Special {
                 .collect();
             props.insert(PID_DISPLAY_NAME, (0x001F, Hnid::Heap(name)));
         }
-        pc_heap(&props)
+        Ok(props)
     }
 
     /// A folder's properties as a PST needs them, or `None` when nothing in them needs
@@ -352,7 +352,11 @@ impl Special {
     ///
     /// The root folder and the Inbox get the special-folder links a PST keeps there.
     /// Any folder loses links that name another store.
-    pub fn folder_heap(&self, pst: &mut Pst, folder: &Node) -> Result<Option<Vec<u8>>, String> {
+    pub(crate) fn folder_props(
+        &self,
+        pst: &mut Pst,
+        folder: &Node,
+    ) -> Result<Option<RawProps>, String> {
         let is_root = folder.nid == NID_ROOT_FOLDER;
         let is_inbox = Some(folder.nid) == self.inbox;
         let (_, mut props) = raw_props(pst, folder.bid_data)?;
@@ -388,7 +392,7 @@ impl Special {
             self.link(&mut props, PID_IPM_DRAFTS, self.drafts);
         }
         let _ = before;
-        pc_heap(&props).map(Some)
+        Ok(Some(props))
     }
 
     /// Remove every property whose value is an entry id (or a list of them) that names

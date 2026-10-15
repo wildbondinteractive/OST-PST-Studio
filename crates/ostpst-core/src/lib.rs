@@ -45,6 +45,7 @@ pub mod crypt;
 pub mod export;
 pub mod exporters;
 pub mod fsutil;
+pub mod heapw;
 pub mod html;
 pub mod jobs;
 pub mod ltp;

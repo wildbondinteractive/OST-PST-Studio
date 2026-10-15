@@ -28,30 +28,35 @@
 //! Subnode trees are rebuilt the same way, recursively, since an attachment is a subnode
 //! and an embedded message is a subnode tree hanging off one.
 //!
-//! **Block boundaries are kept where they exist.** That is not tidiness. A heap-on-node -
+//! **Heaps are rebuilt, everything else keeps its block boundaries.** A heap-on-node,
 //! which is how every property context and every table is stored, addresses its
 //! allocations by *which block* they are in (MS-PST 2.3.1.1, the `hidBlockIndex` field of
-//! an HID). Re-splitting a stream at different offsets would leave every one of those
-//! pointing at the wrong place, and the file would parse and give back the wrong answers,
-//! which is worse than failing. So a block is only ever divided when it is too big for
-//! the target format to hold, and when that happens and the block is a heap, it is
-//! reported rather than done quietly.
+//! an HID), and a 4K-page OST even packs that id differently from a PST. So a heap is
+//! read out allocation by allocation and written again in the PST's layout, with the
+//! values that no longer fit moved out into subnodes; see [`heapw`](crate::heapw). A
+//! stream that is not a heap, a body or an attachment, is addressed by offset, so it is
+//! carried over with its blocks as they were and only ever divided when one is too big
+//! for the target format to hold.
 //!
 //! Nothing is re-encoded: the output declares `NDB_CRYPT_NONE` and its blocks are written
 //! plain. The encoding is keyless and protects nothing, that is the whole argument of
 //! this project, so preserving it would be work in exchange for nothing.
 
+use crate::heapw::{copies_cleanly, rebuild_pc, rebuild_tc, write_pc, RebuiltHeap};
+use crate::ltp::{Heap, Lookup, CLIENT_SIG_PC, CLIENT_SIG_TC};
 use crate::ndb::{crc32, Node, Pst};
+use crate::ostfix::RawProps;
 use crate::repair::{
     build_tree, pad, place_aligned, put16, put32, put64, sig, Rebuilt, AMAP_EVERY, AMAP_FIRST,
     BBTENTRY, BLOCK_ALIGN, ESSENTIAL, MAP_SLOTS, NBTENTRY, OFF_BID_NEXT_B, OFF_BID_NEXT_P, PAGE,
     PTYPE_BBT, PTYPE_NBT,
 };
+use std::collections::HashSet;
 use std::io::{Seek, SeekFrom, Write};
 
 /// The most a PST data block can hold: 8KB all in, less the 16-byte trailer.
 /// MS-PST 2.2.2.8.
-const MAX_DATA: usize = 8176;
+pub(crate) const MAX_DATA: usize = 8176;
 /// An XBLOCK is a header and then 8 bytes an entry, in one block.
 const X_ENTRIES: usize = (MAX_DATA - 8) / 8;
 /// An SLBLOCK entry is a local id and two block ids, padded to 24.
@@ -93,10 +98,12 @@ struct Out {
     /// counter is the id shifted down by two, exactly as `bidNextB` in the header is.
     next: u64,
     problems: Vec<String>,
+    /// The source is a 4K-page OST, whose heaps must be laid out again.
+    wide: bool,
 }
 
 impl Out {
-    fn new(path: &str, first_bid_index: u64) -> Result<Out, String> {
+    fn new(path: &str, first_bid_index: u64, wide: bool) -> Result<Out, String> {
         let f = std::fs::File::create(path).map_err(|e| format!("{path}: {e}"))?;
         let mut o = Out {
             f: std::io::BufWriter::with_capacity(1 << 20, f),
@@ -105,6 +112,7 @@ impl Out {
             bbt: Vec::new(),
             next: first_bid_index,
             problems: Vec::new(),
+            wide,
         };
         // Zeroes over the header and the first section's map slots, so the file actually
         // contains them: the real header is written back over these at the end, once the
@@ -174,7 +182,13 @@ impl Out {
     /// The stream comes back from the OST already decoded and inflated, as the list of
     /// blocks it was stored in. That list is kept: see the note at the top about heaps
     /// addressing themselves by block number.
-    fn stream(&mut self, pst: &mut Pst, src: u64, what: &str) -> Result<u64, String> {
+    fn stream(
+        &mut self,
+        pst: &mut Pst,
+        src: u64,
+        what: &str,
+        may_be_heap: bool,
+    ) -> Result<u64, String> {
         if src == 0 {
             return Ok(0);
         }
@@ -187,7 +201,7 @@ impl Out {
             // Too big for the target format, so it has to come apart. Fine for a message
             // body or an attachment, which are addressed by offset across the whole
             // stream; not fine for a heap, whose contents point at each other by block.
-            if b.len() > 2 && b[2] == 0xEC {
+            if may_be_heap && b.len() > 2 && b[2] == 0xEC {
                 self.problems.push(format!(
                     "{what}: a {}-byte heap block had to be divided to fit a PST's 8176-byte \
                      limit. Heaps address themselves by block number, so anything stored in \
@@ -238,10 +252,125 @@ impl Out {
         self.block(&body, true)
     }
 
+    /// Write a list of ready-made blocks as one data stream.
+    fn blocks(&mut self, blocks: &[Vec<u8>]) -> Result<u64, String> {
+        let mut parts = Vec::with_capacity(blocks.len());
+        for b in blocks {
+            parts.push((self.block(b, false)?, b.len() as u64));
+        }
+        match parts.len() {
+            0 => Ok(0),
+            1 => Ok(parts[0].0),
+            _ => self.xblock(&parts),
+        }
+    }
+
+    /// A node, or a subnode: its data stream and its subnode tree, as the output names
+    /// them.
+    ///
+    /// From a 4K-page OST, a heap is laid out again rather than copied; anything else,
+    /// and everything from an ANSI PST, goes through [`Out::stream`] as it is.
+    ///
+    /// `lookup` finds the node behind a table row (a sibling of this node), which is
+    /// how a table's cells are told apart when an OST keeps them in more than one heap.
+    ///
+    /// `who` is the node's own id and the id of the node it is reported under. A
+    /// subnode of type 0x1F holds a value, a body or an attachment or a row matrix,
+    /// never a heap, however much its first bytes may look like one.
+    fn node(
+        &mut self,
+        pst: &mut Pst,
+        src: (u64, u64),
+        who: (u32, u32),
+        depth: u32,
+        what: &str,
+        lookup: Lookup,
+    ) -> Result<(u64, u64), String> {
+        let (bid_data, bid_sub) = src;
+        let (own, nid) = who;
+        let value = own & 0x1F == 0x1F;
+        if self.wide && bid_data != 0 && !value {
+            let blocks = pst.node_blocks(bid_data)?;
+            let is_heap = blocks
+                .first()
+                .is_some_and(|b| b.len() >= 12 && b[2] == 0xEC);
+            // A heap of a type this cannot take apart is copied when that is known to
+            // be exact, and reported when it is not.
+            let known = is_heap && matches!(blocks[0][3], CLIENT_SIG_PC | CLIENT_SIG_TC);
+            if is_heap && (known || !copies_cleanly(&blocks)) {
+                let client = blocks[0][3];
+                let mut subs: HashSet<u32> = pst.subnodes(bid_sub)?.keys().copied().collect();
+                let rebuilt = match client {
+                    CLIENT_SIG_PC => {
+                        Heap::with_layout(blocks, true).and_then(|h| rebuild_pc(&h, &mut subs))
+                    }
+                    CLIENT_SIG_TC => rebuild_tc(pst, bid_data, bid_sub, &mut subs, Some(lookup)),
+                    other => Err(format!("a heap of client type 0x{other:02X}")),
+                };
+                match rebuilt {
+                    Ok(rb) => return self.rebuilt(pst, rb, bid_sub, nid, depth, what),
+                    Err(e) => self.problems.push(format!(
+                        "{what}: its heap could not be laid out again for a PST ({e}); it \
+                         was copied block for block and may not read back correctly"
+                    )),
+                }
+            }
+        }
+        let data = self.stream(pst, bid_data, what, !value)?;
+        let sub = self.subtree(pst, bid_sub, nid, depth, Vec::new(), &[])?;
+        Ok((data, sub))
+    }
+
+    /// A node whose properties were rewritten: the heap built from them, and its subnode
+    /// tree with whatever had to spill out of that heap.
+    fn pc_node(
+        &mut self,
+        pst: &mut Pst,
+        props: &RawProps,
+        n: &Node,
+        what: &str,
+    ) -> Result<(u64, u64), String> {
+        let mut subs: HashSet<u32> = pst.subnodes(n.bid_sub)?.keys().copied().collect();
+        let rb = write_pc(props, &mut subs)?;
+        self.rebuilt(pst, rb, n.bid_sub, n.nid, 0, what)
+    }
+
+    fn rebuilt(
+        &mut self,
+        pst: &mut Pst,
+        rb: RebuiltHeap,
+        bid_sub: u64,
+        nid: u32,
+        depth: u32,
+        what: &str,
+    ) -> Result<(u64, u64), String> {
+        if rb.unresolved > 0 {
+            self.problems.push(format!(
+                "{what}: {} value(s) pointed at heap space the source does not have and \
+                 were left out",
+                rb.unresolved
+            ));
+        }
+        let data = self.blocks(&rb.blocks)?;
+        let sub = self.subtree(pst, bid_sub, nid, depth, rb.spilled, &rb.dropped)?;
+        Ok((data, sub))
+    }
+
     /// Rebuild a node's subnode tree: every subnode's own data and its own subnodes, then
     /// a fresh SLBLOCK naming them. MS-PST 2.2.2.8.3.3.
-    fn subtree(&mut self, pst: &mut Pst, src: u64, nid: u32, depth: u32) -> Result<u64, String> {
-        if src == 0 {
+    ///
+    /// `extra` are subnodes to add, or whose data to replace, with their blocks already
+    /// cut; `dropped` are subnodes of the source to leave out.
+    fn subtree(
+        &mut self,
+        pst: &mut Pst,
+        src: u64,
+        nid: u32,
+        depth: u32,
+        extra: Vec<(u32, Vec<Vec<u8>>)>,
+        dropped: &[u32],
+    ) -> Result<u64, String> {
+        if src == 0 && extra.is_empty() {
             return Ok(0);
         }
         if depth > MAX_NEST {
@@ -253,14 +382,46 @@ impl Out {
         // `subnodes` hands back the leaves with any SIBLOCK level above them already
         // flattened away, so what comes back is the whole set and the shape is this
         // code's to choose again.
-        let mut subs: Vec<(u32, crate::ndb::Sub)> = pst.subnodes(src)?.into_iter().collect();
+        let mut subs: Vec<(u32, Option<crate::ndb::Sub>)> = pst
+            .subnodes(src)?
+            .into_iter()
+            .filter(|(k, _)| !dropped.contains(k))
+            .map(|(k, s)| (k, Some(s)))
+            .collect();
+        for (k, _) in &extra {
+            if !subs.iter().any(|(n, _)| n == k) {
+                subs.push((*k, None));
+            }
+        }
         subs.sort_by_key(|(k, _)| *k);
+
+        let siblings: std::collections::HashMap<u32, (u64, u64)> = subs
+            .iter()
+            .filter_map(|(k, s)| s.map(|s| (*k, (s.data, s.sub))))
+            .collect();
+        let lookup = |id: u32| siblings.get(&id).copied();
 
         let mut entries = Vec::new();
         for (sub_nid, s) in subs {
             let what = format!("node 0x{nid:X}, subnode 0x{sub_nid:X}");
-            let data = self.stream(pst, s.data, &what)?;
-            let below = self.subtree(pst, s.sub, nid, depth + 1)?;
+            if let Some((_, chunks)) = extra.iter().find(|(k, _)| *k == sub_nid) {
+                let data = self.blocks(chunks)?;
+                let below = match s {
+                    Some(s) => self.subtree(pst, s.sub, nid, depth + 1, Vec::new(), &[])?,
+                    None => 0,
+                };
+                entries.push((sub_nid, data, below));
+                continue;
+            }
+            let s = s.expect("a subnode without an override comes from the source");
+            let (data, below) = self.node(
+                pst,
+                (s.data, s.sub),
+                (sub_nid, nid),
+                depth + 1,
+                &what,
+                &lookup,
+            )?;
             entries.push((sub_nid, data, below));
         }
         if entries.is_empty() {
@@ -320,74 +481,6 @@ pub(crate) enum Hnid {
     Sub(u32),
 }
 
-/// A property context in one heap block: the heap header, the B-tree header, its one
-/// leaf of records sorted by property id, the values, and the page map after them.
-/// Laid out as Outlook lays out a store, allocations back to back, the map straight
-/// after the last, so the one written here reads like the ones it wrote.
-pub(crate) fn pc_heap(
-    props: &std::collections::BTreeMap<u16, (u16, Hnid)>,
-) -> Result<Vec<u8>, String> {
-    let hid = |index: usize| (index as u32) << 5;
-    let mut leaf = Vec::new();
-    let mut values: Vec<&[u8]> = Vec::new();
-    for (id, (ptype, v)) in props {
-        let hnid = match v {
-            Hnid::Inline(x) | Hnid::Sub(x) => *x,
-            Hnid::Heap(b) if b.is_empty() => 0,
-            Hnid::Heap(b) => {
-                values.push(b);
-                hid(2 + values.len()) // 1 is the B-tree header, 2 the leaf
-            }
-        };
-        leaf.extend_from_slice(&id.to_le_bytes());
-        leaf.extend_from_slice(&ptype.to_le_bytes());
-        leaf.extend_from_slice(&hnid.to_le_bytes());
-    }
-    // BTHHEADER: signature, 2-byte keys, 6-byte entries, a leaf with nothing above it.
-    let mut bth = vec![0xB5, 2, 6, 0];
-    bth.extend_from_slice(&hid(2).to_le_bytes());
-
-    let mut out = vec![0u8; 12];
-    let mut offsets = Vec::new();
-    for a in [&bth[..], &leaf[..]].into_iter().chain(values) {
-        offsets.push(out.len() as u16);
-        out.extend_from_slice(a);
-    }
-    offsets.push(out.len() as u16);
-    if out.len() % 2 == 1 {
-        out.push(0);
-    }
-    let map = out.len();
-    out.extend_from_slice(&((offsets.len() - 1) as u16).to_le_bytes()); // cAlloc
-    out.extend_from_slice(&0u16.to_le_bytes()); // cFree
-    for o in &offsets {
-        out.extend_from_slice(&o.to_le_bytes());
-    }
-    if out.len() > MAX_DATA {
-        return Err(format!(
-            "the message store's properties come to {} bytes, more than one block holds",
-            out.len()
-        ));
-    }
-    // HNHDR: the map's offset, 0xEC, 0xBC for a property context, the B-tree header as
-    // the heap's root, and how full this one block is.
-    put16(&mut out, 0, map as u16);
-    out[2] = 0xEC;
-    out[3] = 0xBC;
-    put32(&mut out, 4, hid(1));
-    let fill = fill_level(MAX_DATA - out.len());
-    put32(&mut out, 8, fill as u32);
-    Ok(out)
-}
-
-/// How much room is left in a heap block, in the sixteen steps MS-PST 2.3.1.2 counts in.
-fn fill_level(free: usize) -> u8 {
-    const AT_LEAST: [usize; 15] = [
-        3584, 2560, 2048, 1792, 1536, 1280, 1024, 768, 512, 256, 128, 64, 32, 16, 8,
-    ];
-    AT_LEAST.iter().position(|&n| free >= n).unwrap_or(15) as u8
-}
-
 /// Write an OST or an ANSI PST out as a Unicode PST, node by node.
 pub fn convert(
     pst: &mut Pst,
@@ -406,7 +499,7 @@ pub fn convert(
         >> 2)
         + 1;
     let ansi = pst.is_ansi();
-    let mut o = Out::new(out, first)?;
+    let mut o = Out::new(out, first, !ansi && !pst.is_small_page())?;
 
     let mut nbt: Vec<(u64, Vec<u8>)> = Vec::new();
     let mut dropped_nodes = 0;
@@ -431,6 +524,11 @@ pub fn convert(
         }
     };
     let mut rewritten: Vec<u32> = Vec::new();
+    let all: std::collections::HashMap<u32, (u64, u64)> = keep
+        .iter()
+        .map(|n| (n.nid, (n.bid_data, n.bid_sub)))
+        .collect();
+    let lookup = |id: u32| all.get(&id).copied();
 
     for (i, n) in keep.iter().enumerate() {
         if !on(i as u64 + 1, keep.len() as u64) {
@@ -442,39 +540,63 @@ pub fn convert(
         // output, unreferenced, which costs space and nothing else.
         // The store of an OST is rebuilt rather than copied; see `pst_store`. An ANSI
         // PST's store already is one, with a password its owner may have set.
-        let data = match &fix {
-            Some(fix) if n.nid == NID_MESSAGE_STORE => match fix.store_heap(pst, n) {
-                Ok(heap) => {
+        let built = match &fix {
+            Some(fix) if n.nid == NID_MESSAGE_STORE => match fix.store_props(pst, n) {
+                Ok(props) => {
                     rewritten.push(n.nid);
-                    o.block(&heap, false)
+                    o.pc_node(pst, &props, n, &what)
                 }
                 Err(e) => {
                     o.problems.push(format!(
                         "The message store was copied as it was, which Outlook will show as \
                          an empty mailbox until SCANPST has been run over it: {e}"
                     ));
-                    o.stream(pst, n.bid_data, &what)
+                    o.node(
+                        pst,
+                        (n.bid_data, n.bid_sub),
+                        (n.nid, n.nid),
+                        0,
+                        &what,
+                        &lookup,
+                    )
                 }
             },
-            Some(fix) if n.nid_type() == 0x02 => match fix.folder_heap(pst, n) {
-                Ok(Some(heap)) => {
+            Some(fix) if n.nid_type() == 0x02 => match fix.folder_props(pst, n) {
+                Ok(Some(props)) => {
                     rewritten.push(n.nid);
-                    o.block(&heap, false)
+                    o.pc_node(pst, &props, n, &what)
                 }
-                Ok(None) => o.stream(pst, n.bid_data, &what),
+                Ok(None) => o.node(
+                    pst,
+                    (n.bid_data, n.bid_sub),
+                    (n.nid, n.nid),
+                    0,
+                    &what,
+                    &lookup,
+                ),
                 Err(e) => {
                     o.problems.push(format!(
                         "{what}: its folder links could not be re-pointed at this file ({e}); \
                          it was copied as it was and Outlook may not open it cleanly"
                     ));
-                    o.stream(pst, n.bid_data, &what)
+                    o.node(
+                        pst,
+                        (n.bid_data, n.bid_sub),
+                        (n.nid, n.nid),
+                        0,
+                        &what,
+                        &lookup,
+                    )
                 }
             },
-            _ => o.stream(pst, n.bid_data, &what),
-        };
-        let built = match data {
-            Ok(data) => o.subtree(pst, n.bid_sub, n.nid, 0).map(|sub| (data, sub)),
-            Err(e) => Err(e),
+            _ => o.node(
+                pst,
+                (n.bid_data, n.bid_sub),
+                (n.nid, n.nid),
+                0,
+                &what,
+                &lookup,
+            ),
         };
         match built {
             Ok((data, sub)) => {
@@ -600,19 +722,89 @@ mod tests {
         p.node_blocks(bid).expect("a stream should read back")
     }
 
+    /// A heap is laid out again on the way through, so it is compared by what it holds:
+    /// the same properties with the same values, or the same rows with the same cells.
+    /// Anything that is not a heap must come through byte for byte, block for block.
+    fn same_data(
+        a: &mut Pst,
+        xa: (u64, u64),
+        b: &mut Pst,
+        xb: (u64, u64),
+        what: &str,
+        la: Lookup,
+        lb: Lookup,
+    ) {
+        let sa = stream(a, xa.0);
+        let sb = stream(b, xb.0);
+        let is_heap = |s: &Vec<Vec<u8>>| s.first().is_some_and(|f| f.len() >= 12 && f[2] == 0xEC);
+        if is_heap(&sa) {
+            match sa[0][3] {
+                CLIENT_SIG_PC => {
+                    let pa = crate::ltp::read_pc(a, xa.0, xa.1).expect("source pc");
+                    let pb = crate::ltp::read_pc(b, xb.0, xb.1).expect("output pc");
+                    assert_eq!(
+                        format!("{:?}", pa.props),
+                        format!("{:?}", pb.props),
+                        "{what}: different properties"
+                    );
+                    return;
+                }
+                CLIENT_SIG_TC => {
+                    let ta = crate::ltp::read_tc_with(a, xa.0, xa.1, Some(la)).expect("source tc");
+                    let tb = crate::ltp::read_tc_with(b, xb.0, xb.1, Some(lb)).expect("output tc");
+                    let rows = |t: crate::ltp::Tc| -> Vec<String> {
+                        t.rows
+                            .iter()
+                            .map(|r| format!("{:X} {:?}", r.id, r.props))
+                            .collect()
+                    };
+                    assert_eq!(rows(ta), rows(tb), "{what}: different rows");
+                    return;
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(sa, sb, "{what}: holds different bytes");
+    }
+
     /// Compare a subnode tree in the source against the one in the output: the same local
     /// ids, each with the same data and the same tree under it. The block ids differ by
     /// design, every one of them is new, so the comparison is on what they hold.
-    fn same_subtree(a: &mut Pst, ab: u64, b: &mut Pst, bb: u64, what: &str) {
-        let mut sa: Vec<_> = a
+    ///
+    /// Subnodes of type 0x1F are where a heap keeps values and row matrices too big for
+    /// itself; a rebuilt heap may need more of them or fewer, so they are left out here
+    /// and judged through the properties and rows that refer to them.
+    fn same_subtree(
+        a: &mut Pst,
+        ab: u64,
+        b: &mut Pst,
+        bb: u64,
+        what: &str,
+        la: Lookup,
+        lb: Lookup,
+    ) {
+        // An OST's auxiliary table heaps (client 0xA5) are folded into the table's own
+        // heap on the way through, so they have no counterpart in the output either.
+        let source: Vec<_> = a
             .subnodes(ab)
             .expect("source subnodes")
             .into_iter()
+            .collect();
+        let mut sa: Vec<_> = source
+            .into_iter()
+            .filter(|(k, _)| k & 0x1F != 0x1F)
+            .filter(|(_, s)| {
+                let blocks = a.node_blocks(s.data).unwrap_or_default();
+                !blocks
+                    .first()
+                    .is_some_and(|f| f.len() >= 12 && f[2] == 0xEC && f[3] == 0xA5)
+            })
             .collect();
         let mut sb: Vec<_> = b
             .subnodes(bb)
             .expect("output subnodes")
             .into_iter()
+            .filter(|(k, _)| k & 0x1F != 0x1F)
             .collect();
         sa.sort_by_key(|(k, _)| *k);
         sb.sort_by_key(|(k, _)| *k);
@@ -622,12 +814,16 @@ mod tests {
             "{what}: different subnodes"
         );
         for ((nid, x), (_, y)) in sa.iter().zip(sb.iter()) {
-            assert_eq!(
-                stream(a, x.data),
-                stream(b, y.data),
-                "{what}: subnode 0x{nid:X} holds different bytes"
+            same_data(
+                a,
+                (x.data, x.sub),
+                b,
+                (y.data, y.sub),
+                &format!("{what}: subnode 0x{nid:X}"),
+                la,
+                lb,
             );
-            same_subtree(a, x.sub, b, y.sub, &format!("{what} / 0x{nid:X}"));
+            same_subtree(a, x.sub, b, y.sub, &format!("{what} / 0x{nid:X}"), la, lb);
         }
     }
 
@@ -678,6 +874,16 @@ mod tests {
         assert_eq!(after.len(), nodes.len(), "a node went missing");
         let by_nid: std::collections::BTreeMap<u32, Node> =
             after.iter().map(|n| (n.nid, *n)).collect();
+        let la_map: std::collections::HashMap<u32, (u64, u64)> = nodes
+            .iter()
+            .map(|n| (n.nid, (n.bid_data, n.bid_sub)))
+            .collect();
+        let lb_map: std::collections::HashMap<u32, (u64, u64)> = after
+            .iter()
+            .map(|n| (n.nid, (n.bid_data, n.bid_sub)))
+            .collect();
+        let la: Lookup = &|id| la_map.get(&id).copied();
+        let lb: Lookup = &|id| lb_map.get(&id).copied();
 
         for n in &nodes {
             let m = by_nid[&n.nid];
@@ -689,11 +895,14 @@ mod tests {
             // The store and the folders whose links were re-pointed are rebuilt on
             // purpose; they have tests of their own.
             if !r.rewritten.contains(&n.nid) {
-                assert_eq!(
-                    stream(&mut ost, n.bid_data),
-                    stream(&mut pst, m.bid_data),
-                    "node 0x{:X} holds different bytes",
-                    n.nid
+                same_data(
+                    &mut ost,
+                    (n.bid_data, n.bid_sub),
+                    &mut pst,
+                    (m.bid_data, m.bid_sub),
+                    &format!("node 0x{:X}", n.nid),
+                    la,
+                    lb,
                 );
             }
             same_subtree(
@@ -702,6 +911,8 @@ mod tests {
                 &mut pst,
                 m.bid_sub,
                 &format!("node 0x{:X}", n.nid),
+                la,
+                lb,
             );
         }
         let _ = std::fs::remove_file(out);
@@ -866,14 +1077,6 @@ mod tests {
         let _ = std::fs::remove_file(out);
     }
 
-    #[test]
-    fn fill_levels_follow_the_spec_table() {
-        assert_eq!(fill_level(8000), 0);
-        assert_eq!(fill_level(3583), 1);
-        assert_eq!(fill_level(8), 14);
-        assert_eq!(fill_level(7), 15);
-    }
-
     /// The two levels no fixture reaches: a stream too long for one XBLOCK, and a node
     /// with more subnodes than one SLBLOCK holds.
     ///
@@ -887,7 +1090,7 @@ mod tests {
         let path = path.to_str().unwrap();
 
         // Enough pieces for three XBLOCKs and an XXBLOCK over them.
-        let mut o = Out::new(path, 1).expect("temp file");
+        let mut o = Out::new(path, 1, false).expect("temp file");
         let parts: Vec<(u64, u64)> = (0..X_ENTRIES as u64 * 2 + 5)
             .map(|i| (i * 4, 100))
             .collect();

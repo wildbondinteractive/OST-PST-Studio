@@ -1,55 +1,54 @@
-# OST/PST Studio 0.1.0
+# OST/PST Studio 0.1.1
 
-First release. A Windows desktop application and command-line tool for Outlook OST and
-PST files, built on the pstfree engine (MIT).
+Fixes for real Outlook 2013+ OST files, found on a 1.57 GB Outlook 2016 cached mailbox
+(26,417 messages, 1,088 folders). The 0.1.0 release had only been exercised on the two
+small public fixtures.
 
-## What it does
+## Fixed
 
-- Opens Unicode PST, Outlook 2013+ OST, pre-2013 OST and ANSI PST without Outlook,
-  Exchange or a password.
-- Recovers files whose index is damaged by sweeping surviving pages and carving blocks,
-  and labels items it could not confirm.
-- Explorer with folder tree, virtualised message list, sandboxed HTML preview
-  (scripts disabled, remote content blocked), attachments with previews and SHA-256,
-  and every raw MAPI property.
-- Search across the mailbox with field, date, size, type, importance and attachment
-  filters, plus saved presets.
-- Converts OST to a Unicode PST (and ANSI to Unicode), reopens and validates the result,
-  and writes valid allocation maps so Outlook should open it without SCANPST.
-- Repairs damaged PSTs to a new file. The original is never modified; output is written
-  to a temporary name and moved into place only when complete.
-- Exports to EML, MSG, MBOX, HTML, text, CSV, vCard, iCalendar and JSON, for the whole
-  mailbox, chosen folders or selected messages, with attachment extraction.
-- Batch queue with per-file progress, reports, cancellation and retry.
-- Reports for every job as JSON, HTML or text.
-- Saved scans so large or damaged files reopen quickly.
-- Command line `ostpst` with `--json` output for scripts.
+- **Message lists showed "Unknown sender" and "(no subject)" for a real OST.** A
+  4K-page OST packs heap ids differently from a PST (13 bits of block number and 14 of
+  allocation index, not 16 and 11), so any folder whose contents table spans more than
+  one block, or holds more than 2047 entries, listed as blank. The reader now uses the
+  file's own layout.
+- **Senders were still missing after that.** Outlook keeps two columns of every
+  contents table in an OST (the sent-representing name and the conversation index) in
+  auxiliary heaps hung off the table as subnodes 0x521 and 0x541, sharing the id space
+  of the table's own heap. Nothing in the file says which column uses which heap, so
+  the reader works it out by holding a few rows against the messages themselves.
+- **OST to PST conversion produced a file in which most messages were unreadable**
+  (25,288 of 26,417 on the mailbox above). Heaps were copied block for block; a PST
+  cannot hold a 64 KB block, and once a heap block is divided every id inside it points
+  at the wrong place. Every property context and table context from a 4K OST is now
+  read out and laid out again in the PST's layout: blocks of at most 8,176 bytes,
+  allocations of at most 3,580, larger values moved to subnodes, auxiliary heaps folded
+  into the table's own, and row matrices re-packed for the smaller block size. The
+  result validates fully (every folder and message readable) and its contents tables
+  list the same rows as the source, cell for cell.
+- The command-line executable carries a version resource (product name, version, icon).
 
-## Verification
+## Still to confirm
 
-- 86 automated tests (engine and fixtures), clippy clean.
-- libpff (an independent reader) reads converted and repaired outputs and finds them
-  identical to their sources, folder by folder and property by property.
+- The converted file from the mailbox above has not yet been opened in Outlook. The
+  fixtures converted with this release open directly in classic Outlook, as before;
+  see `docs/OUTLOOK_COMPATIBILITY.md` and `scripts/outlook-check.ps1`.
+- Three internal nodes in that OST use heap types the engine does not know (0x8C and
+  0xCC, undocumented); they are copied as they are and named in the report.
+- libpff cannot read that OST itself (it fails on one contents-table row), so the
+  independent comparison could only be run on the public fixtures, where it reports the
+  output identical to the source.
 
-## Known limits
+## Requirements
 
-- Outlook compatibility was confirmed on the two public fixtures (a converted OST and a
-  repaired PST open directly in classic Outlook, no SCANPST). Larger real-world files
-  have not been tried; `scripts/outlook-check.ps1` is the manual check. See
-  `docs/OUTLOOK_COMPATIBILITY.md`.
-- Exporting a selection to a new PST, PST splitting and PDF export are not in this
-  release.
-- The installers are not code-signed; Windows SmartScreen will warn on first run. An
-  application to SignPath Foundation's free signing programme for open-source projects
-  is pending; see `docs/CODE_SIGNING_POLICY.md`.
+Windows 10 or 11, 64-bit. The WebView2 runtime (included in current Windows; the
+installer fetches it if missing). The command-line tool has no dependencies.
+
+The installers are not code-signed; Windows SmartScreen will warn on first run. An
+application to SignPath Foundation's free signing programme for open-source projects
+is pending; see `docs/CODE_SIGNING_POLICY.md`.
 
 ## Provenance
 
 Built by the `release` GitHub Actions workflow from the tagged commit, on a GitHub-hosted
 Windows runner. SHA-256 checksums of the attached files are listed at the end of these
 notes by the workflow.
-
-## Requirements
-
-Windows 10 or 11, 64-bit. The WebView2 runtime (included in current Windows; the
-installer fetches it if missing). The command-line tool has no dependencies.

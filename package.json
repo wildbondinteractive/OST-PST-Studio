@@ -1,7 +1,7 @@
 {
   "name": "ostpst-studio",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Open, browse, search, convert, repair and export Outlook OST and PST files on Windows",
   "license": "MIT",
   "author": "Jacob Adlon",

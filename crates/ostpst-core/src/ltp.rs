@@ -14,7 +14,7 @@
 //! panic and never a silent empty answer.
 
 use crate::ndb::{u16le, u32le, Node, Pst};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 /// Marks the start of a heap. First byte of any heap-on-node.
 const HN_SIGNATURE: u8 = 0xEC;
@@ -22,6 +22,11 @@ const HN_SIGNATURE: u8 = 0xEC;
 pub const CLIENT_SIG_PC: u8 = 0xBC;
 /// ...and a table context.
 pub const CLIENT_SIG_TC: u8 = 0x7C;
+/// A heap Outlook 2013+ hangs off a contents table in an OST, in subnodes 0x521 and
+/// 0x541, holding the cells of a column or two in an id space of its own. Not in
+/// MS-PST (the value is listed as reserved) and not in any PST Outlook writes; see
+/// [`table_heaps`].
+pub const CLIENT_SIG_AUX: u8 = 0xA5;
 /// First byte of a BTHHEADER.
 const BTH_SIGNATURE: u8 = 0xB5;
 /// First byte of a TCINFO.
@@ -78,10 +83,24 @@ pub struct Heap {
     pub client_sig: u8,
     /// Heap id of whatever the client considers the root of its structure.
     pub user_root: u32,
+    /// How a heap id is split. A PST puts the block number in the top 16 bits and the
+    /// allocation index in the 11 below (MS-PST 2.3.1.1). An Outlook 2013+ OST, whose
+    /// 4K-page blocks are up to eight times larger and hold many more allocations, uses
+    /// 13 bits for the block and 14 for the index. Read a large OST heap with the PST
+    /// split and every id past the first block, and every index past 2047, points at
+    /// the wrong place or nowhere: a contents table of thousands of messages lists
+    /// them all with no subject and no sender, and nothing says why.
+    wide: bool,
 }
 
 impl Heap {
+    /// A heap in the PST layout.
     pub fn new(blocks: Vec<Vec<u8>>) -> Result<Heap, String> {
+        Heap::with_layout(blocks, false)
+    }
+
+    /// A heap from a file of known page size: `wide` for the 4K-page OST layout.
+    pub fn with_layout(blocks: Vec<Vec<u8>>, wide: bool) -> Result<Heap, String> {
         let b0 = blocks.first().ok_or("node has no data blocks")?;
         if b0.len() < 12 {
             return Err(format!(
@@ -99,7 +118,28 @@ impl Heap {
             client_sig: b0[3],
             user_root: u32le(b0, 4),
             blocks,
+            wide,
         })
+    }
+
+    /// How many allocations the heap holds, over all its blocks.
+    pub fn allocations(&self) -> usize {
+        self.blocks
+            .iter()
+            .filter_map(|b| {
+                let map = u16le_at(b, 0).ok()? as usize;
+                u16le_at(b, map).ok().map(|n| n as usize)
+            })
+            .sum()
+    }
+
+    /// Which block and which allocation a heap id names, in this heap's layout.
+    pub fn parts(&self, hid: u32) -> (usize, usize) {
+        if self.wide {
+            ((hid >> 19) as usize, ((hid >> 5) & 0x3FFF) as usize)
+        } else {
+            ((hid >> 16) as usize, ((hid >> 5) & 0x7FF) as usize)
+        }
     }
 
     /// The bytes of one heap allocation.
@@ -115,8 +155,7 @@ impl Heap {
         if hid & 0x1F != 0 {
             return Err(format!("0x{hid:08X} is a subnode id, not a heap id"));
         }
-        let index = ((hid >> 5) & 0x7FF) as usize;
-        let block = (hid >> 16) as usize;
+        let (block, index) = self.parts(hid);
         if index == 0 {
             return Err(format!(
                 "heap id 0x{hid:08X} has allocation index 0, which cannot exist"
@@ -150,6 +189,12 @@ impl Heap {
     }
 }
 
+/// A node's heap, read with the id layout its file uses.
+pub fn node_heap(pst: &mut Pst, bid: u64) -> Result<Heap, String> {
+    let wide = !pst.is_ansi() && !pst.is_small_page();
+    Heap::with_layout(pst.node_blocks(bid)?, wide)
+}
+
 fn u16le_at(b: &[u8], o: usize) -> Result<u16, String> {
     if o + 2 > b.len() {
         return Err(format!(
@@ -165,7 +210,13 @@ fn u16le_at(b: &[u8], o: usize) -> Result<u16, String> {
 /// Depth is bounded by the header's own level count, so a damaged tree cannot be made to
 /// recurse forever.
 pub(crate) fn bth_records(heap: &Heap) -> Result<(usize, Vec<Vec<u8>>), String> {
-    let h = heap.item(heap.user_root)?;
+    bth_records_at(heap, heap.user_root)
+}
+
+/// The same, for a B-tree rooted somewhere other than the heap's user root: a table
+/// context keeps its row index as a second tree.
+pub(crate) fn bth_records_at(heap: &Heap, root: u32) -> Result<(usize, Vec<Vec<u8>>), String> {
+    let h = heap.item(root)?;
     if h.len() < 8 {
         return Err(format!("B-tree header is {} bytes, expected 8", h.len()));
     }
@@ -403,7 +454,7 @@ pub fn read_node_pc(pst: &mut Pst, node: &Node) -> Result<Pc, String> {
 /// Needs the file, not just the heap, because a value too big to fit the heap is stored
 /// out in the subnode tree and has to be fetched from there.
 pub fn read_pc(pst: &mut Pst, bid_data: u64, bid_sub: u64) -> Result<Pc, String> {
-    let heap = Heap::new(pst.node_blocks(bid_data)?)?;
+    let heap = node_heap(pst, bid_data)?;
     if heap.client_sig != CLIENT_SIG_PC {
         return Err(format!(
             "heap holds client type 0x{:02X}, not a property context",
@@ -628,10 +679,19 @@ pub struct Column {
     pub prop: u16,
     pub ptype: u16,
     /// Where the cell sits in a row, and how wide it is.
-    ib: usize,
-    cb: usize,
+    pub(crate) ib: usize,
+    pub(crate) cb: usize,
     /// Which bit of the row's cell-existence bitmap says whether this cell is set.
-    bit: usize,
+    pub(crate) bit: usize,
+}
+
+impl Column {
+    /// Whether the cell is set on a row, and the row is wide enough to hold it.
+    pub(crate) fn present(&self, row: &[u8], ceb_start: usize) -> bool {
+        self.ib + self.cb <= row.len()
+            && ceb_start + self.bit / 8 < row.len()
+            && row[ceb_start + self.bit / 8] & (0x80 >> (self.bit % 8)) != 0
+    }
 }
 
 /// A table context: the rows of a hierarchy table, contents table or recipient table.
@@ -661,20 +721,18 @@ impl Row {
     }
 }
 
-/// Read a table context: a grid of properties, one row per thing the table lists.
-///
-/// Unlike a property context, a table stores every fixed-size value inline in the row
-/// however wide it is, a timestamp is eight bytes sitting in the row itself, not a
-/// reference to the heap. Only genuinely variable things go elsewhere.
-pub fn read_tc(pst: &mut Pst, bid_data: u64, bid_sub: u64) -> Result<Tc, String> {
-    let heap = Heap::new(pst.node_blocks(bid_data)?)?;
-    if heap.client_sig != CLIENT_SIG_TC {
-        return Err(format!(
-            "heap holds client type 0x{:02X}, not a table context",
-            heap.client_sig
-        ));
-    }
-    let info = heap.item(heap.user_root)?;
+/// The fixed part of a table context: TCINFO and its column descriptors. MS-PST 2.3.4.1.
+pub(crate) struct TcInfo {
+    /// Where the cell-existence bitmap starts in a row.
+    pub ceb_start: usize,
+    /// The width of a whole row.
+    pub width: usize,
+    pub hid_row_index: u32,
+    pub hnid_rows: u32,
+    pub columns: Vec<Column>,
+}
+
+pub(crate) fn parse_tcinfo(info: &[u8]) -> Result<TcInfo, String> {
     if info.len() < 22 {
         return Err(format!(
             "table header is {} bytes, expected at least 22",
@@ -692,7 +750,6 @@ pub fn read_tc(pst: &mut Pst, bid_data: u64, bid_sub: u64) -> Result<Tc, String>
     // then for the bitmap. The last is therefore the width of a whole row.
     let ceb_start = u16le(info, 6) as usize;
     let width = u16le(info, 8) as usize;
-    let hnid_rows = u32le(info, 14);
     if info.len() < 22 + ncols * 8 {
         return Err(format!(
             "table declares {ncols} columns that do not fit its header"
@@ -703,7 +760,6 @@ pub fn read_tc(pst: &mut Pst, bid_data: u64, bid_sub: u64) -> Result<Tc, String>
             "table rows are {width} bytes with a bitmap at {ceb_start}"
         ));
     }
-
     let mut columns = Vec::with_capacity(ncols);
     for i in 0..ncols {
         let d = &info[22 + i * 8..30 + i * 8];
@@ -716,22 +772,276 @@ pub fn read_tc(pst: &mut Pst, bid_data: u64, bid_sub: u64) -> Result<Tc, String>
             bit: d[7] as usize,
         });
     }
+    Ok(TcInfo {
+        ceb_start,
+        width,
+        hid_row_index: u32le(info, 10),
+        hnid_rows: u32le(info, 14),
+        columns,
+    })
+}
 
-    // The rows live in the heap for a small table, or out in a subnode for a big one.
-    let blocks = if hnid_rows == 0 {
-        Vec::new()
-    } else if hnid_rows & 0x1F == 0 {
-        vec![heap.item(hnid_rows)?.to_vec()]
-    } else {
-        match pst.subnodes(bid_sub)?.get(&hnid_rows).copied() {
-            Some(s) => pst.node_blocks(s.data)?,
-            None => {
-                return Err(format!(
-                    "table rows are in subnode 0x{hnid_rows:08X}, which is not there"
-                ))
+/// A table's heaps: its own, and any auxiliary ones in its subnode tree.
+///
+/// In an Outlook 2013+ OST every contents table carries two subnodes, 0x521 and 0x541,
+/// each a heap with client signature 0xA5 and no user root. The cells of a column or
+/// two (the sent-representing name and the conversation index, in every file seen so
+/// far) point into those rather than into the table's own heap, using the same heap id
+/// space, so a given id means one thing in the main heap and another in an auxiliary
+/// one. Nothing in the table header says which heap a column uses; the files Outlook
+/// writes as PSTs have no auxiliary heaps at all. So which heap a column lives in is
+/// worked out from the data: see [`column_homes`].
+pub(crate) struct TableHeaps {
+    pub main: Heap,
+    /// The auxiliary heaps, each with the local id of the subnode holding it.
+    pub aux: Vec<(u32, Heap)>,
+}
+
+impl TableHeaps {
+    /// Heap number 0 is the table's own; the rest are the auxiliary ones in order.
+    pub fn heap(&self, which: usize) -> &Heap {
+        if which == 0 {
+            &self.main
+        } else {
+            &self.aux[which - 1].1
+        }
+    }
+    pub fn len(&self) -> usize {
+        1 + self.aux.len()
+    }
+}
+
+pub(crate) fn table_heaps(
+    pst: &mut Pst,
+    bid_data: u64,
+    bid_sub: u64,
+) -> Result<TableHeaps, String> {
+    let main = node_heap(pst, bid_data)?;
+    if main.client_sig != CLIENT_SIG_TC {
+        return Err(format!(
+            "heap holds client type 0x{:02X}, not a table context",
+            main.client_sig
+        ));
+    }
+    let mut aux = Vec::new();
+    if bid_sub != 0 {
+        let mut subs: Vec<(u32, crate::ndb::Sub)> = pst.subnodes(bid_sub)?.into_iter().collect();
+        subs.sort_by_key(|(k, _)| *k);
+        for (nid, s) in subs {
+            // Only the internal subnodes can be auxiliary heaps; the others are row
+            // matrices and spilled values, which are not heaps and are not probed.
+            if nid & 0x1F != 0x01 {
+                continue;
+            }
+            if let Ok(h) = node_heap(pst, s.data) {
+                if h.client_sig == CLIENT_SIG_AUX {
+                    aux.push((nid, h));
+                }
             }
         }
-    };
+    }
+    Ok(TableHeaps { main, aux })
+}
+
+/// Finds a row's own node, so a table cell can be checked against the property it
+/// summarises: the data block and subnode tree of the node with that id.
+pub(crate) type Lookup<'a> = &'a dyn Fn(u32) -> Option<(u64, u64)>;
+
+/// The raw bytes of every variable-size property on a node, by property id.
+fn raw_variable_props(
+    pst: &mut Pst,
+    bid_data: u64,
+    bid_sub: u64,
+) -> Option<BTreeMap<u16, Vec<u8>>> {
+    let heap = node_heap(pst, bid_data).ok()?;
+    if heap.client_sig != CLIENT_SIG_PC {
+        return None;
+    }
+    let (key, records) = bth_records(&heap).ok()?;
+    if key != 2 {
+        return None;
+    }
+    let mut subs = None;
+    let mut out = BTreeMap::new();
+    for r in records.iter().filter(|r| r.len() >= 8) {
+        let (id, ptype, raw) = (u16le(r, 0), u16le(r, 2), u32le(r, 4));
+        if is_inline(ptype) || raw == 0 {
+            continue;
+        }
+        let bytes = if raw & 0x1F == 0 {
+            match heap.item(raw) {
+                Ok(b) => b.to_vec(),
+                Err(_) => continue,
+            }
+        } else {
+            if subs.is_none() {
+                subs = Some(pst.subnodes(bid_sub).unwrap_or_default());
+            }
+            match subs.as_ref().unwrap().get(&raw).copied() {
+                Some(s) => pst.node_blocks(s.data).ok()?.concat(),
+                None => continue,
+            }
+        };
+        out.insert(id, bytes);
+    }
+    Some(out)
+}
+
+/// Which heap each column's cells live in: 0 for the table's own, n for the nth
+/// auxiliary heap. Fixed-size columns, which live in the row itself, get 0.
+///
+/// A column whose cells all resolve in exactly one heap belongs there. When they resolve
+/// in more than one, which happens for every small table because both heaps have a
+/// first allocation, or in none, the cells are held against the rows' own nodes: the
+/// heap whose bytes match the node's property is the one. Without a way to find the
+/// nodes, the table's own heap wins whenever it can hold every cell, because most
+/// columns live there; otherwise the auxiliary heap with the fewest allocations.
+pub(crate) fn column_homes(
+    pst: &mut Pst,
+    heaps: &TableHeaps,
+    tc: &TcInfo,
+    rows: &[Vec<u8>],
+    lookup: Option<Lookup>,
+) -> Vec<usize> {
+    let mut homes = vec![0usize; tc.columns.len()];
+    if heaps.aux.is_empty() {
+        return homes;
+    }
+    let n = heaps.len();
+    let mut cells: Vec<Vec<(u32, u32)>> = vec![Vec::new(); tc.columns.len()];
+    for b in rows {
+        for r in b.chunks_exact(tc.width) {
+            for (ci, c) in tc.columns.iter().enumerate() {
+                if !is_variable(c.ptype) || c.cb < 4 || !c.present(r, tc.ceb_start) {
+                    continue;
+                }
+                let v = u32le(r, c.ib);
+                if v != 0 && v & 0x1F == 0 {
+                    cells[ci].push((u32le(r, 0), v));
+                }
+            }
+        }
+    }
+    let ambiguous: Vec<usize> = (0..tc.columns.len())
+        .filter(|&ci| {
+            if cells[ci].is_empty() {
+                return false;
+            }
+            let full = (0..n)
+                .filter(|&h| {
+                    cells[ci]
+                        .iter()
+                        .all(|(_, v)| heaps.heap(h).item(*v).is_ok())
+                })
+                .count();
+            full != 1
+        })
+        .collect();
+    // The rows' own properties, read once for a handful of rows, when anything needs
+    // them.
+    let mut samples: Vec<(u32, BTreeMap<u16, Vec<u8>>)> = Vec::new();
+    if let (Some(lookup), false) = (lookup, ambiguous.is_empty()) {
+        let mut seen = HashSet::new();
+        'rows: for &ci in &ambiguous {
+            for (rid, _) in &cells[ci] {
+                if samples.len() >= 12 {
+                    break 'rows;
+                }
+                if !seen.insert(*rid) {
+                    continue;
+                }
+                if let Some((bd, bs)) = lookup(*rid) {
+                    if let Some(props) = raw_variable_props(pst, bd, bs) {
+                        samples.push((*rid, props));
+                    }
+                }
+            }
+        }
+    }
+    for (ci, col) in cells.iter().enumerate() {
+        if col.is_empty() {
+            continue;
+        }
+        let full: Vec<usize> = (0..n)
+            .filter(|&h| col.iter().all(|(_, v)| heaps.heap(h).item(*v).is_ok()))
+            .collect();
+        if full.len() == 1 {
+            homes[ci] = full[0];
+            continue;
+        }
+        let prop = tc.columns[ci].prop;
+        let mut score = vec![0usize; n];
+        for (rid, props) in &samples {
+            let Some(want) = props.get(&prop) else {
+                continue;
+            };
+            for (_, v) in col.iter().filter(|(r, _)| r == rid) {
+                for (h, s) in score.iter_mut().enumerate() {
+                    if heaps.heap(h).item(*v).ok() == Some(&want[..]) {
+                        *s += 1;
+                    }
+                }
+            }
+        }
+        let best = (0..n).max_by_key(|&h| score[h]).unwrap_or(0);
+        homes[ci] = if score[best] > 0 {
+            // The first of equals, which is the main heap.
+            (0..n).find(|&h| score[h] == score[best]).unwrap_or(0)
+        } else if full.contains(&0) {
+            0
+        } else if let Some(&h) = full.iter().min_by_key(|&&h| heaps.heap(h).allocations()) {
+            h
+        } else {
+            0
+        };
+    }
+    homes
+}
+
+/// The row matrix's blocks: in the heap for a small table, in a subnode for a big one.
+pub(crate) fn row_blocks(
+    pst: &mut Pst,
+    heaps: &TableHeaps,
+    tc: &TcInfo,
+    bid_sub: u64,
+) -> Result<Vec<Vec<u8>>, String> {
+    if tc.hnid_rows == 0 {
+        Ok(Vec::new())
+    } else if tc.hnid_rows & 0x1F == 0 {
+        Ok(vec![heaps.main.item(tc.hnid_rows)?.to_vec()])
+    } else {
+        match pst.subnodes(bid_sub)?.get(&tc.hnid_rows).copied() {
+            Some(s) => pst.node_blocks(s.data),
+            None => Err(format!(
+                "table rows are in subnode 0x{:08X}, which is not there",
+                tc.hnid_rows
+            )),
+        }
+    }
+}
+
+/// Read a table context: a grid of properties, one row per thing the table lists.
+///
+/// Unlike a property context, a table stores every fixed-size value inline in the row
+/// however wide it is, a timestamp is eight bytes sitting in the row itself, not a
+/// reference to the heap. Only genuinely variable things go elsewhere.
+pub fn read_tc(pst: &mut Pst, bid_data: u64, bid_sub: u64) -> Result<Tc, String> {
+    read_tc_with(pst, bid_data, bid_sub, None)
+}
+
+/// The same, able to find the rows' own nodes, which settles which heap a column's
+/// cells are in when the table has more than one (see [`column_homes`]).
+pub(crate) fn read_tc_with(
+    pst: &mut Pst,
+    bid_data: u64,
+    bid_sub: u64,
+    lookup: Option<Lookup>,
+) -> Result<Tc, String> {
+    let heaps = table_heaps(pst, bid_data, bid_sub)?;
+    let tc = parse_tcinfo(heaps.main.item(heaps.main.user_root)?)?;
+    let blocks = row_blocks(pst, &heaps, &tc, bid_sub)?;
+    let homes = column_homes(pst, &heaps, &tc, &blocks, lookup);
+    let width = tc.width;
 
     // A row never straddles two blocks: each block holds as many whole rows as fit and
     // the remainder is padding. Concatenating the blocks first would shift every row
@@ -741,13 +1051,9 @@ pub fn read_tc(pst: &mut Pst, bid_data: u64, bid_sub: u64) -> Result<Tc, String>
     for b in &blocks {
         for r in b.chunks_exact(width).take(b.len() / width) {
             let mut props = BTreeMap::new();
-            for c in &columns {
-                if c.ib + c.cb > width || c.bit / 8 >= width - ceb_start {
+            for (ci, c) in tc.columns.iter().enumerate() {
+                if !c.present(r, tc.ceb_start) {
                     continue;
-                }
-                let ceb = &r[ceb_start..width];
-                if ceb[c.bit / 8] & (0x80 >> (c.bit % 8)) == 0 {
-                    continue; // the cell is not set on this row
                 }
                 let cell = &r[c.ib..c.ib + c.cb];
                 let v = if is_variable(c.ptype) {
@@ -755,7 +1061,7 @@ pub fn read_tc(pst: &mut Pst, bid_data: u64, bid_sub: u64) -> Result<Tc, String>
                     let bytes = if hnid == 0 {
                         Vec::new()
                     } else if hnid & 0x1F == 0 {
-                        heap.item(hnid).unwrap_or(&[]).to_vec()
+                        heaps.heap(homes[ci]).item(hnid).unwrap_or(&[]).to_vec()
                     } else {
                         if subs.is_none() {
                             subs = Some(pst.subnodes(bid_sub).unwrap_or_default());
@@ -828,7 +1134,7 @@ pub fn read_recipients(pst: &mut Pst, bid_sub: u64) -> Vec<Recipient> {
 
 /// Whether a property type is stored somewhere else and referenced, rather than sitting
 /// in the row. Everything of a fixed size lives in the row, however wide.
-fn is_variable(ptype: u16) -> bool {
+pub(crate) fn is_variable(ptype: u16) -> bool {
     matches!(ptype, 0x000D | 0x001E | 0x001F | 0x0102) || ptype & 0x1000 != 0
 }
 
@@ -1284,6 +1590,18 @@ mod tests {
         // Block 9 of a one-block node.
         let e = heap.item(0x0009_0020).unwrap_err();
         assert!(e.contains("node has 1"), "unhelpful error: {e}");
+    }
+
+    #[test]
+    fn wide_heap_ids_split_differently() {
+        let mut b = vec![0u8; 32];
+        b[2] = HN_SIGNATURE;
+        let pst = Heap::new(vec![b.clone()]).unwrap();
+        let ost = Heap::with_layout(vec![b], true).unwrap();
+        // Seen in a real Outlook 2016 OST: block 7, allocation 1104.
+        assert_eq!(pst.parts(0x0038_8A00), (0x38, 1104 & 0x7FF));
+        assert_eq!(ost.parts(0x0038_8A00), (7, 1104));
+        assert_eq!(ost.parts(0x0CE8_3360), (413, 411));
     }
 
     #[test]
