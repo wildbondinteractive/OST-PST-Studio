@@ -14,8 +14,9 @@
   Exit code 0 only when every check on every file passes. Never skips a file.
 
   Used by .github/workflows/release.yml before anything is published; usable by anyone
-  on a downloaded release. Needs signtool.exe (Windows SDK) for the digest check, 7-Zip
-  for unpacking the NSIS installer and msiexec for the MSI.
+  on a downloaded release, in Windows PowerShell 5.1 or PowerShell 7. Needs signtool.exe
+  (Windows SDK) for the digest check, 7-Zip for unpacking the NSIS installer and msiexec
+  for the MSI.
 
 .PARAMETER Path
   Files to verify, or a directory whose .exe and .msi files are verified.
@@ -45,6 +46,7 @@
   .\scripts\verify-signatures.ps1 -Path release -Embedded
   .\scripts\verify-signatures.ps1 -Path "$env:USERPROFILE\Downloads\OST-PST Studio_0.1.2_x64-setup.exe" -Embedded
 #>
+#Requires -Version 5.1
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string[]]$Path,
@@ -171,7 +173,8 @@ foreach ($p in $Path) {
     if (Test-Path -LiteralPath $p -PathType Container) {
         Get-ChildItem -LiteralPath $p -File | Where-Object { $_.Extension -in ".exe", ".msi" } | Sort-Object Name | ForEach-Object { $files.Add($_.FullName) }
     } else {
-        $files.Add((Resolve-Path -LiteralPath $p -ErrorAction SilentlyContinue).Path ?? $p)
+        $resolved = Resolve-Path -LiteralPath $p -ErrorAction SilentlyContinue
+        $files.Add($(if ($resolved) { $resolved.Path } else { $p }))
     }
 }
 if ($files.Count -eq 0) { throw "nothing to verify under: $($Path -join ', ')" }
