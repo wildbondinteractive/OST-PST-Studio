@@ -27,7 +27,7 @@ PST files, built on the pstfree engine (MIT).
 
 ## Verification
 
-- 85 automated tests (engine and fixtures), clippy clean.
+- 86 automated tests (engine and fixtures), clippy clean.
 - libpff (an independent reader) reads converted and repaired outputs and finds them
   identical to their sources, folder by folder and property by property.
 

@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build:signed": "tauri build --config src-tauri/tauri.signed.conf.json"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.3.3",

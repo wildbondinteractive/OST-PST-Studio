@@ -38,11 +38,70 @@ gh release create v0.1.0 "target\release\bundle\nsis\OST-PST Studio_0.1.0_x64-se
 
 ## Signing
 
-The builds are not code-signed. Windows SmartScreen will warn on first run of an
-unsigned installer. To sign, obtain an Authenticode certificate and set
-`bundle.windows.certificateThumbprint` (and `digestAlgorithm`, `timestampUrl`) in
-`src-tauri\tauri.conf.json`; Tauri signs the executable and installers during
-`tauri build`. Never claim a build is signed unless this was done.
+Unsigned builds work, but Windows SmartScreen warns on first run and some mail-admin
+environments block them. Signing needs an Authenticode code-signing certificate; the
+project is set up so that once the certificate is on the build PC, one command signs the
+application, the CLI, the NSIS installer and the MSI.
+
+### 1. Get a certificate
+
+| Option | Cost | Who it suits |
+|---|---|---|
+| Azure Trusted Signing (Microsoft) | about 10 USD/month, pay as you go | Individuals and companies; identity check takes days, no hardware token; signatures get SmartScreen reputation quickly |
+| OV certificate from DigiCert, Sectigo, SSL.com, GlobalSign | 200 to 500 USD/year, delivered on a hardware token or in a cloud HSM | Established companies; SmartScreen reputation builds over time |
+| EV certificate | 300 to 700 USD/year | Immediate SmartScreen reputation; stricter identity checks |
+| SignPath Foundation | free for open-source projects that qualify | OSS builds through their CI integration |
+| Self-signed test certificate | free | Only for testing the pipeline; Windows will still warn |
+
+For a public MIT project the realistic choices are Azure Trusted Signing or an OV
+certificate. Either way the private key never leaves the vendor's hardware or cloud
+HSM; signtool uses it in place.
+
+### 2. Install it on the build PC
+
+- Hardware token or cloud HSM certificate: install the vendor's client (for example
+  SafeNet Authentication Client or the vendor's KSP) and plug in or sign in. The
+  certificate appears in `Cert:\CurrentUser\My`.
+- Azure Trusted Signing: install the Trusted Signing dlib and client, sign in with
+  `az login`, and set `OSTPST_SIGN_MODE=azure` (see `scripts/sign.ps1` for the exact
+  signtool arguments it then uses, or adapt them to your account and profile names).
+
+Check that Windows can see a code-signing certificate:
+
+```powershell
+Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert | Select-Object Subject, Thumbprint, NotAfter
+```
+
+### 3. Build signed
+
+```powershell
+npm run build:signed
+```
+
+That runs `tauri build` with `src-tauri/tauri.signed.conf.json`, which tells the bundler
+to call `scripts/sign.ps1` for every artifact. The script finds the certificate (or the
+one named by `OSTPST_SIGN_THUMBPRINT` when several are installed), signs with SHA-256,
+applies an RFC 3161 timestamp from `http://timestamp.digicert.com` (override with
+`OSTPST_TIMESTAMP_URL`), and verifies the result. Sign the CLI the same way:
+
+```powershell
+cargo build --release -p ostpst-cli
+powershell -File scripts\sign.ps1 targetelease\ostpst.exe
+```
+
+### 4. Verify before publishing
+
+```powershell
+Get-AuthenticodeSignature "targeteleaseundle
+sis\OST-PST Studio_0.1.0_x64-setup.exe" | Format-List Status, SignerCertificate, TimeStamperCertificate
+```
+
+`Status` must be `Valid` and the timestamper must be present. Then, in File Explorer,
+right-click the installer, Properties, Digital Signatures, and confirm the publisher
+name is the one you expect.
+
+Only after this do the release notes get to say the build is signed. A self-signed
+certificate does not count.
 
 ## Before tagging
 
