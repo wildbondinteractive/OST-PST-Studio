@@ -30,5 +30,19 @@ __pycache__/
 # Log written by the sign-command stand-in used by scripts/dev/staged-packaging-check.ps1
 scripts/dev/sign-command.log
 
-# Updater signing keys never belong in the repository (docs/UPDATER.md).
+# Private keys and secrets never belong in the repository: the in-app updater's
+# signing key (docs/UPDATER.md), code-signing material, SSH keys and environment files.
+# CI also fails if any tracked file contains private key material (ci.yml).
 *.key
+*.pem
+*.pfx
+*.p12
+*.ppk
+*.snk
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+.tauri/
+.env
+.env.*

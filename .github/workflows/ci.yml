@@ -31,6 +31,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The updater's private key, a minisign key, or any PEM private key in a tracked
+      # file, or a key or certificate file tracked at all, fails the build before anything
+      # else runs. .gitignore keeps such files out; this catches a forced add.
+      - name: No private keys in the repository
+        shell: bash
+        run: |
+          if git grep -I -l -e 'dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWdu' -e 'rsign encrypted secret key' -e 'minisign encrypted secret key' -E -e '-----BEGIN ([A-Z]+ )?PRIVATE KEY-----' -- . ':!.github/workflows/ci.yml'; then
+            echo "::error::private key material is tracked in the repository"
+            exit 1
+          fi
+          if git ls-files | grep -iE '\.(key|pem|pfx|p12|ppk|snk|jks|keystore)$'; then
+            echo "::error::a key or certificate file is tracked in the repository"
+            exit 1
+          fi
+          echo "no private keys tracked"
+
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
