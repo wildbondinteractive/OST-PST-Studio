@@ -55,12 +55,30 @@ resources":
 | Entity type | Environment |
 | Environment name | `release-signing` |
 | Issuer | `https://token.actions.githubusercontent.com` |
-| Subject identifier (generated) | `repo:wildbondinteractive/OST-PST-Studio:environment:release-signing` |
+| Subject identifier | `repo:wildbondinteractive@234866646/OST-PST-Studio@1419887626:environment:release-signing` |
 | Audience | `api://AzureADTokenExchange` |
 
+**The subject uses GitHub's immutable format.** Repositories created after 15 July 2026
+(this one was created on 14 October 2026) identify themselves in OIDC tokens by numeric
+owner and repository IDs, not by names: `repo:OWNER@OWNER-ID/REPO@REPO-ID:environment:NAME`.
+The older name-only form, `repo:wildbondinteractive/OST-PST-Studio:environment:release-signing`,
+does not match this repository's tokens and must not be used. The portal's "GitHub
+Actions deploying Azure resources" scenario generates the name-only form, so the subject
+has to be entered by hand (or the credential created with the "Other issuer" scenario).
+The IDs are public and stable across renames; confirm them with:
+
+```powershell
+gh api repos/wildbondinteractive/OST-PST-Studio --jq '"owner \(.owner.id) repo \(.id)"'
+gh api repos/wildbondinteractive/OST-PST-Studio/actions/oidc/customization/sub
+```
+
+The second command shows `use_immutable_subject: true` and the exact `sub_claim_prefix`
+GitHub puts in front of `:environment:release-signing`.
+
 The subject must match exactly, including the `environment:` part. A credential made for
-a branch or a tag would not match a job that runs in the environment, and the login
-step would fail with `AADSTS70021` (no matching federated identity record).
+a branch or a tag, or one using the name-only form, does not match a job that runs in
+the environment, and the login step fails with `AADSTS70021` (no matching federated
+identity record).
 
 No client secret is created. If one exists on the application from earlier experiments,
 delete it; the workflow never uses it, and the repository must never hold one.
@@ -74,8 +92,8 @@ Repository Settings, Environments, `release-signing`. Protection rules to set:
 - **Deployment branches and tags:** "Selected branches and tags", add a tag rule `v*`
   (and nothing else). This is what stops a pull request or a branch build from ever
   reaching the environment, whatever the workflow file says.
-- **Required reviewers** (optional, recommended once there is a second maintainer):
-  the run pauses before signing until a reviewer approves.
+- **Required reviewers:** configured. A run pauses at the signing job, before anything
+  is signed, until a reviewer approves it on the run page ("Review deployments").
 
 Environment variables (Settings, Environments, `release-signing`, Environment
 variables; **variables**, not secrets, because none of them is secret):
@@ -165,7 +183,7 @@ Identity Verification Root Certificate Authority 2020", RFC 3161 timestamp prese
 
 | Message | Cause | Fix |
 |---|---|---|
-| `AADSTS70021: No matching federated identity record found` | The OIDC subject does not match the federated credential | The job must run with `environment: release-signing`, and the credential's subject must be `repo:wildbondinteractive/OST-PST-Studio:environment:release-signing` |
+| `AADSTS70021: No matching federated identity record found` | The OIDC subject does not match the federated credential | The job must run with `environment: release-signing`, and the credential's subject must be the immutable form `repo:wildbondinteractive@234866646/OST-PST-Studio@1419887626:environment:release-signing`, not the name-only form |
 | `AADSTS700016: Application ... was not found` | Wrong `AZURE_CLIENT_ID` or `AZURE_TENANT_ID` | Copy both from the application's Overview page |
 | `No subscriptions found` | The application has no role in the subscription, or wrong `AZURE_SUBSCRIPTION_ID` | The signer role on the account is inside the subscription, so this normally means the ID is wrong |
 | `Error: Unable to get ACTIONS_ID_TOKEN_REQUEST_URL` | The job lacks `id-token: write` | Keep the permissions block on the job |
