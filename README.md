@@ -77,6 +77,11 @@ Add `--json` to any command for machine-readable output.
 
 Full status: `docs/IMPLEMENTATION_STATUS.md`. Test results: `docs/TEST_RESULTS.md`.
 
+## Privacy
+
+Mailboxes are processed entirely on your computer; the application makes no network
+connections and collects no telemetry. See `docs/PRIVACY_POLICY.md`.
+
 ## Licence
 
 MIT. See `LICENSE`. The engine is derived from pstfree, copyright pstfree contributors,
