@@ -16,6 +16,9 @@ browsing and export. Rust engine (forked from pstfree, MIT) + Tauri 2 + React/Ty
 - No telemetry, no network calls, no remote content in previews unless the user allows
   it per message.
 - Keep upstream attribution banners at the top of the carried-over engine files.
+- Releases are built only by GitHub Actions (`docs/CODE_SIGNING_POLICY.md`). Never commit
+  signing credentials; SignPath is wired through the secret `SIGNPATH_API_TOKEN` and the
+  variable `SIGNPATH_ORGANIZATION_ID` only.
 
 ## Layout
 
@@ -29,7 +32,9 @@ src                     React UI: lib/api.ts mirrors model.rs; pages/*, componen
 fixtures/               fetch script writes fixtures/data (gitignored)
 tests/                  libpff_compare.py (independent validation), upstream bakeoff
 docs/                   audit, status, test results, competitor matrix, Outlook notes
-scripts/                fetch-fixtures.ps1, outlook-check.ps1 (manual), dev helpers
+scripts/                fetch-fixtures.ps1, outlook-check.ps1 (manual), third-party-notices.py, dev helpers
+.github/workflows/      ci.yml (build + test + installer artifacts), release.yml (tag to draft release,
+                        SignPath signing job inactive until the secret and variable exist)
 ```
 
 ## Build and test

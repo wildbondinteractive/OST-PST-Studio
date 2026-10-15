@@ -33,9 +33,26 @@ libpff, and a technician command line.
 
 ## Install
 
-Download the installer or portable build from the Releases page, or build it yourself
-(below). Requirements: Windows 10/11 x64 and the WebView2 runtime (present on all
-current Windows installations; the installer fetches it if missing).
+Download the installer or portable build from the
+[Releases page](https://github.com/wildbondinteractive/OST-PST-Studio/releases), or
+build it yourself (below). Requirements: Windows 10/11 x64 and the WebView2 runtime
+(present on all current Windows installations; the installer fetches it if missing).
+
+| File | Use |
+|---|---|
+| `OST-PST Studio_<version>_x64-setup.exe` | Per-user installer, no administrator rights needed |
+| `OST-PST Studio_<version>_x64_en-US.msi` | MSI for managed deployment |
+| `OST-PST-Studio_<version>_x64-portable.exe` | Runs from anywhere, nothing installed |
+| `ostpst_<version>_x64.exe` | Command-line tool, no dependencies |
+
+**Uninstall:** Settings, Apps, Installed apps, "OST-PST Studio", Uninstall (the MSI also
+appears under Programs and Features). The portable build is removed by deleting the
+file. Preferences, history and the scan cache can be cleared from the application's
+Settings page or by deleting `%APPDATA%\com.wildbondinteractive.ostpststudio` and
+`%LOCALAPPDATA%\com.wildbondinteractive.ostpststudio`.
+
+**Releases are not code-signed yet.** Windows SmartScreen warns on first run; "More
+info", "Run anyway". See the code signing policy below.
 
 ## Build
 
@@ -44,9 +61,15 @@ current Windows installations; the installer fetches it if missing).
 npm install
 .\scripts\fetch-fixtures.ps1   # public test fixtures, for the tests
 cargo test --workspace
-npm run tauri build            # installer + exe in src-tauri\target\release\bundle
+npm run tauri build            # installer + exe in target\release\bundle
 cargo build --release -p ostpst-cli   # target\release\ostpst.exe
 ```
+
+The same steps run on a GitHub-hosted Windows runner for every push
+(`.github/workflows/ci.yml`), and the installers it produces are attached to each run as
+artifacts, so what is published can be compared with what the committed source builds.
+Releases are built by `.github/workflows/release.yml` from a `v<version>` tag. See
+`docs/RELEASING.md`.
 
 ## Command line
 
@@ -80,9 +103,24 @@ Full status: `docs/IMPLEMENTATION_STATUS.md`. Test results: `docs/TEST_RESULTS.m
 ## Privacy
 
 Mailboxes are processed entirely on your computer; the application makes no network
-connections and collects no telemetry. See `docs/PRIVACY_POLICY.md`.
+connections and collects no telemetry. See [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md).
+
+## Code signing policy
+
+No release is code-signed yet. An application to the
+[SignPath Foundation](https://signpath.org) free code-signing programme for open-source
+projects is pending; until a release page says it was signed through that programme,
+every published binary is unsigned and is described as such. Releases are built only by
+the GitHub Actions workflow in this repository from a tagged commit, and signing, once
+available, will be approved by hand for each release.
+
+The full policy, including who may commit, review and approve signing, is
+[docs/CODE_SIGNING_POLICY.md](docs/CODE_SIGNING_POLICY.md).
 
 ## Licence
 
-MIT. See `LICENSE`. The engine is derived from pstfree, copyright pstfree contributors,
-MIT. Third-party notices are listed in the application's Settings page.
+MIT. See [LICENSE](LICENSE). The engine is derived from
+[pstfree](https://github.com/sp00nznet/pstfree), copyright pstfree contributors, MIT.
+Every open-source component compiled into the application, with its licence, is listed
+in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and summarised on the application's
+Settings page.

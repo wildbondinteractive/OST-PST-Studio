@@ -25,23 +25,64 @@ Bump the version in `Cargo.toml` (`workspace.package.version`), `package.json` a
 
 ## Publish on GitHub
 
-The repository is https://github.com/wildbondinteractive/OST-PST-Studio. Create a release
-from the web UI (Releases, "Draft a new release"), tag it `v<version>`, and attach the
-four files above. Suggested release notes: the "What it does" and "Honest limits"
-sections of `README.md`, plus the current `docs/TEST_RESULTS.md` summary line.
+Published binaries are built by GitHub Actions, not on a developer PC, so that anyone can
+trace a download back to a workflow run and a commit. The repository is
+https://github.com/wildbondinteractive/OST-PST-Studio.
 
-With the GitHub CLI installed this is one command:
+1. Make sure the last `build` workflow run on `main` is green
+   (`.github/workflows/ci.yml`). Its artifacts are the same installers a release will
+   contain.
+2. Update `docs/RELEASE_NOTES.md`; it becomes the body of the release.
+3. Tag and push:
 
-```powershell
-gh release create v0.1.0 "target\release\bundle\nsis\OST-PST Studio_0.1.0_x64-setup.exe" "target\release\bundle\msi\OST-PST Studio_0.1.0_x64_en-US.msi" target\release\ostpst-studio.exe target\release\ostpst.exe --title "OST/PST Studio 0.1.0" --notes-file docs\RELEASE_NOTES.md
-```
+   ```powershell
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+
+4. `.github/workflows/release.yml` checks that the tag matches the version in
+   `Cargo.toml`, `package.json` and `src-tauri\tauri.conf.json`, runs the tests, builds the
+   four files above, computes SHA-256 checksums and creates a **draft** release with the
+   notes and the files attached.
+5. Download the artifacts from the draft, install the NSIS build on a clean Windows user
+   account, open a fixture, then publish the draft from the Releases page.
+
+The workflow never publishes on its own. If anything in the run looks wrong, delete the
+draft and the tag and fix the source first.
 
 ## Signing
 
 Unsigned builds work, but Windows SmartScreen warns on first run and some mail-admin
-environments block them. Signing needs an Authenticode code-signing certificate; the
-project is set up so that once the certificate is on the build PC, one command signs the
-application, the CLI, the NSIS installer and the MSI.
+environments block them. The policy that governs signing, including who may approve it,
+is `docs/CODE_SIGNING_POLICY.md`. Read that first; the rest of this section is the
+mechanics.
+
+### SignPath Foundation (the intended route)
+
+The project is applying to SignPath Foundation's free code-signing programme for
+open-source projects. When the application is accepted:
+
+1. In SignPath, create the project `OST-PST-Studio`, an artifact configuration
+   `windows-installers` that matches the files in the `unsigned-artifacts` workflow
+   artifact (NSIS installer, MSI, portable exe, CLI exe), and the signing policies
+   `test-signing` and `release-signing` as SignPath prescribes.
+2. In the GitHub repository settings add the secret `SIGNPATH_API_TOKEN` (the token of the
+   SignPath CI user) and the repository variable `SIGNPATH_ORGANIZATION_ID`.
+3. Nothing else changes. The `sign` job in `.github/workflows/release.yml` is skipped
+   while the variable is absent; once it exists, every tagged release submits its unsigned
+   artifact to SignPath, waits for a signing approver to approve it in SignPath, and the
+   draft release is assembled from the signed files instead. The release notes then carry
+   the line "Free code signing provided by SignPath.io, certificate by SignPath
+   Foundation." and only then.
+
+No credential for SignPath exists in the repository and none should ever be committed.
+
+### Signing on a developer PC with your own certificate
+
+This path exists for anyone who forks the project and holds a certificate of their own.
+Builds signed this way are not published as releases of this project (see the policy).
+Once the certificate is on the build PC, one command signs the application, the CLI, the
+NSIS installer and the MSI.
 
 ### 1. Get a certificate
 
@@ -50,12 +91,10 @@ application, the CLI, the NSIS installer and the MSI.
 | Azure Trusted Signing (Microsoft) | about 10 USD/month, pay as you go | Individuals and companies; identity check takes days, no hardware token; signatures get SmartScreen reputation quickly |
 | OV certificate from DigiCert, Sectigo, SSL.com, GlobalSign | 200 to 500 USD/year, delivered on a hardware token or in a cloud HSM | Established companies; SmartScreen reputation builds over time |
 | EV certificate | 300 to 700 USD/year | Immediate SmartScreen reputation; stricter identity checks |
-| SignPath Foundation | free for open-source projects that qualify | OSS builds through their CI integration |
 | Self-signed test certificate | free | Only for testing the pipeline; Windows will still warn |
 
-For a public MIT project the realistic choices are Azure Trusted Signing or an OV
-certificate. Either way the private key never leaves the vendor's hardware or cloud
-HSM; signtool uses it in place.
+Either way the private key never leaves the vendor's hardware or cloud HSM; signtool
+uses it in place.
 
 ### 2. Install it on the build PC
 
@@ -112,8 +151,17 @@ certificate does not count.
 
 ## Before tagging
 
-1. `cargo clippy --workspace --all-targets -- -D warnings` and `npm run typecheck` clean.
+1. `cargo clippy --workspace --all-targets -- -D warnings` and `npm run typecheck` clean
+   (the `build` workflow checks the same).
 2. `cargo test --workspace` green with fixtures present.
-3. `python tests\libpff_compare.py` on a converted and a repaired fixture: identical.
+3. `python tests\libpff_compare.py` on a converted and a repaired fixture: identical (the
+   `build` workflow runs this too).
 4. Install the NSIS build on a clean Windows user account and open a fixture.
-5. Update `docs/TEST_RESULTS.md` and `docs/IMPLEMENTATION_STATUS.md`.
+5. Update `docs/TEST_RESULTS.md`, `docs/IMPLEMENTATION_STATUS.md` and
+   `docs/RELEASE_NOTES.md`.
+6. If a dependency changed, regenerate `THIRD_PARTY_NOTICES.md`:
+
+   ```powershell
+   cargo metadata --format-version 1 > $env:TEMP\meta.json
+   python scripts\third-party-notices.py $env:TEMP\meta.json
+   ```

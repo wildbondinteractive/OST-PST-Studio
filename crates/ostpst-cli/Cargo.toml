@@ -14,3 +14,8 @@ path = "src/main.rs"
 ostpst-core = { path = "../ostpst-core" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+# Version resource (product name, version, icon) for ostpst.exe. Already in the tree
+# through tauri-build, so this adds no new dependency.
+[target.'cfg(windows)'.build-dependencies]
+tauri-winres = "0.3"

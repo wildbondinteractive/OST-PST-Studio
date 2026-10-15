@@ -2373,6 +2373,7 @@ dependencies = [
  "ostpst-core",
  "serde",
  "serde_json",
+ "tauri-winres",
 ]
 
 [[package]]

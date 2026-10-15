@@ -39,7 +39,15 @@ PST files, built on the pstfree engine (MIT).
   `docs/OUTLOOK_COMPATIBILITY.md`.
 - Exporting a selection to a new PST, PST splitting and PDF export are not in this
   release.
-- The installers are not code-signed; Windows SmartScreen will warn on first run.
+- The installers are not code-signed; Windows SmartScreen will warn on first run. An
+  application to SignPath Foundation's free signing programme for open-source projects
+  is pending; see `docs/CODE_SIGNING_POLICY.md`.
+
+## Provenance
+
+Built by the `release` GitHub Actions workflow from the tagged commit, on a GitHub-hosted
+Windows runner. SHA-256 checksums of the attached files are listed at the end of these
+notes by the workflow.
 
 ## Requirements
 
