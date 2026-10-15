@@ -85,6 +85,10 @@ pub struct Rebuilt {
     pub source: &'static str,
     /// Anything that had to be done at a cost, named. Empty in the ordinary case.
     pub problems: Vec<String>,
+    /// Nodes whose contents were deliberately rewritten rather than copied: the message
+    /// store and the folders whose links had to be re-pointed at this file. A comparison
+    /// against the source should skip these.
+    pub rewritten: Vec<u32>,
 }
 
 /// The message store, and the folder every other folder hangs off. MS-PST 2.4.1 and 2.4.3.
@@ -394,6 +398,7 @@ pub fn rebuild(
         converted: false,
         source: "",
         problems: Vec::new(),
+        rewritten: Vec::new(),
     })
 }
 

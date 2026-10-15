@@ -478,8 +478,18 @@ fn main() {
                         for (i, b) in blocks.iter().enumerate() {
                             println!("block {i}: {} bytes", b.len());
                             for (j, row) in b.chunks(16).enumerate() {
-                                let hex: Vec<String> = row.iter().map(|x| format!("{x:02X}")).collect();
-                                let asc: String = row.iter().map(|&x| if (0x20..0x7F).contains(&x) { x as char } else { '.' }).collect();
+                                let hex: Vec<String> =
+                                    row.iter().map(|x| format!("{x:02X}")).collect();
+                                let asc: String = row
+                                    .iter()
+                                    .map(|&x| {
+                                        if (0x20..0x7F).contains(&x) {
+                                            x as char
+                                        } else {
+                                            '.'
+                                        }
+                                    })
+                                    .collect();
                                 println!("  {:04X}  {:<48} {asc}", j * 16, hex.join(" "));
                             }
                         }
@@ -491,7 +501,13 @@ fn main() {
                         Ok(subs) => {
                             let mut keys: Vec<_> = subs.keys().copied().collect();
                             keys.sort_unstable();
-                            println!("subnodes: {}", keys.iter().map(|k| format!("0x{k:X}")).collect::<Vec<_>>().join(", "));
+                            println!(
+                                "subnodes: {}",
+                                keys.iter()
+                                    .map(|k| format!("0x{k:X}"))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            );
                         }
                         Err(e) => println!("  subnodes unreadable: {e}"),
                     }
