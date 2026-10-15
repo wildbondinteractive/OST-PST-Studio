@@ -461,6 +461,43 @@ fn main() {
             let file = args.positional.first().unwrap_or_else(|| die(USAGE, 2));
             let nid = nid_arg(args.positional.get(1));
             let mut mb = open(file, salvage, quiet);
+            // `--raw` dumps the node's data blocks as hex, which is the only way to look at
+            // the handful of special nodes (search queues, templates) that are not heaps.
+            if args.flag("--raw") {
+                let node = *mb
+                    .nodes()
+                    .iter()
+                    .find(|n| n.nid == nid)
+                    .unwrap_or_else(|| die(&format!("no node 0x{nid:X} in this file"), 1));
+                println!(
+                    "node 0x{nid:X}: parent 0x{:X}, data block {}, subnode block {}",
+                    node.nid_parent, node.bid_data, node.bid_sub
+                );
+                match mb.pst_mut().node_blocks(node.bid_data) {
+                    Ok(blocks) => {
+                        for (i, b) in blocks.iter().enumerate() {
+                            println!("block {i}: {} bytes", b.len());
+                            for (j, row) in b.chunks(16).enumerate() {
+                                let hex: Vec<String> = row.iter().map(|x| format!("{x:02X}")).collect();
+                                let asc: String = row.iter().map(|&x| if (0x20..0x7F).contains(&x) { x as char } else { '.' }).collect();
+                                println!("  {:04X}  {:<48} {asc}", j * 16, hex.join(" "));
+                            }
+                        }
+                    }
+                    Err(e) => println!("  data unreadable: {e}"),
+                }
+                if node.bid_sub != 0 {
+                    match mb.pst_mut().subnodes(node.bid_sub) {
+                        Ok(subs) => {
+                            let mut keys: Vec<_> = subs.keys().copied().collect();
+                            keys.sort_unstable();
+                            println!("subnodes: {}", keys.iter().map(|k| format!("0x{k:X}")).collect::<Vec<_>>().join(", "));
+                        }
+                        Err(e) => println!("  subnodes unreadable: {e}"),
+                    }
+                }
+                return;
+            }
             let props = mb.node_properties(nid).unwrap_or_else(|e| die(&e, 1));
             if json {
                 print_json(&props);

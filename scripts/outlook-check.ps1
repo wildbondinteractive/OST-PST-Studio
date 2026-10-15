@@ -7,56 +7,54 @@
   opens a file without complaint. It is a MANUAL, OPT-IN workflow. It is never run by the
   test suite, and it is not run by the application.
 
-  START CLASSIC OUTLOOK FIRST and leave its window open. The script attaches to the
-  running instance. If it had to start Outlook itself, Outlook would run with no visible
-  window and any prompt it raised (profile chooser, "file in use", a password request)
-  would be invisible, and the script would appear to hang.
+  USE A THROWAWAY OUTLOOK PROFILE. Attaching a store changes the profile it is attached
+  to, and a file Outlook cannot load can leave that profile spinning until the store is
+  removed again. So do not use your real profile. Create an empty one once:
 
-  What it does, step by step, with a prompt before anything that touches Outlook:
+      & "C:\Program Files\Microsoft Office\root\Office16\OUTLOOK.EXE" /pim OSTPST-Test
+
+  Outlook opens with a profile called OSTPST-Test that has no mail account, only a
+  local data file. Leave that window open and run this script. When Outlook asks which
+  profile to use next time, pick your normal one; delete OSTPST-Test from Control Panel
+  > Mail > Show Profiles when you are done testing.
+
+  What the script does, step by step, with a prompt before anything that touches Outlook:
     1. Copies the PST to a scratch path, so Outlook never touches the original.
     2. Attaches the copy to the running Outlook profile with Namespace.AddStoreEx
        (the same thing File > Open > Outlook Data File does).
     3. Walks every folder and counts items, printing what Outlook sees.
     4. Detaches the store again with Namespace.RemoveStore.
-  Adding and removing a store is a change to the Outlook profile for the duration of the
-  check. Nothing is imported into any mailbox and no mail is sent.
 
-  If Outlook refuses the file or asks for the Inbox Repair Tool (SCANPST), that is the
-  result to record in docs/OUTLOOK_COMPATIBILITY.md.
+  If Outlook refuses the file, asks for the Inbox Repair Tool (SCANPST), or a folder
+  never finishes loading, that is the result to record in docs/OUTLOOK_COMPATIBILITY.md.
 
 .PARAMETER Path
   The PST to check.
+
+.PARAMETER Detach
+  Only detach a store with this file name from the running Outlook, for cleaning up
+  after a run that did not finish.
 
 .EXAMPLE
   .\scripts\outlook-check.ps1 -Path C:\converted\mailbox.pst
 #>
 param(
-    [Parameter(Mandatory = $true)][string]$Path
+    [Parameter(Mandatory = $true)][string]$Path,
+    [switch]$Detach
 )
 
 $ErrorActionPreference = 'Stop'
-if (-not (Test-Path $Path)) { throw "no such file: $Path" }
-$Path = (Resolve-Path $Path).Path
 
 # Outlook must already be running with a window, or every prompt it raises is hidden.
 $running = Get-Process OUTLOOK -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle }
 if (-not $running) {
     Write-Host "Classic Outlook is not running with a visible window."
-    Write-Host "Start Outlook (classic) normally, wait for it to finish loading, then run this again."
+    Write-Host "Start it with a throwaway profile, then run this again:"
+    Write-Host '  & "C:\Program Files\Microsoft Office\root\Office16\OUTLOOK.EXE" /pim OSTPST-Test'
     Write-Host "New Outlook does not mount PST files and cannot be used for this check."
     exit 3
 }
 Write-Host "Found running Outlook: $($running[0].MainWindowTitle)"
-
-# A fresh scratch name every run, so a copy a previous Outlook still holds open cannot
-# block this one.
-$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$scratch = Join-Path $env:TEMP ("ostpst-outlook-check-" + $stamp + "-" + [IO.Path]::GetFileName($Path))
-Copy-Item -Force $Path $scratch
-Write-Host "Copied to $scratch (Outlook will open the copy, never the original)."
-
-$answer = Read-Host "Attach this copy to the running Outlook profile and read it back? [y/N]"
-if ($answer -notmatch '^[Yy]') { Write-Host "Nothing done."; exit 0 }
 
 # Outlook is a single-instance COM server: New-Object connects to the running copy
 # rather than starting another, and works in both Windows PowerShell and PowerShell 7.
@@ -70,8 +68,42 @@ try {
     exit 3
 }
 $ns = $outlook.GetNamespace("MAPI")
-Write-Host "Connected. Profile: $($ns.CurrentProfileName). Attaching the store (watch the Outlook window for any prompt)..."
+Write-Host "Connected. Profile: $($ns.CurrentProfileName)."
+if ($ns.CurrentProfileName -ne "OSTPST-Test") {
+    Write-Host "WARNING: this is not the throwaway profile. A file Outlook cannot load will"
+    Write-Host "leave this profile stuck until the store is removed again."
+    $go = Read-Host "Continue with profile '$($ns.CurrentProfileName)' anyway? [y/N]"
+    if ($go -notmatch '^[Yy]') { Write-Host "Nothing done."; exit 0 }
+}
 
+if ($Detach) {
+    $name = [IO.Path]::GetFileName($Path)
+    $found = $false
+    foreach ($s in @($ns.Stores)) {
+        if ($s.FilePath -and ([IO.Path]::GetFileName($s.FilePath) -like "*$name*")) {
+            Write-Host "Detaching $($s.FilePath)"
+            $ns.RemoveStore($s.GetRootFolder())
+            $found = $true
+        }
+    }
+    if (-not $found) { Write-Host "No attached store matches '$name'." }
+    exit 0
+}
+
+if (-not (Test-Path $Path)) { throw "no such file: $Path" }
+$Path = (Resolve-Path $Path).Path
+
+# A fresh scratch name every run, so a copy a previous Outlook still holds open cannot
+# block this one.
+$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$scratch = Join-Path $env:TEMP ("ostpst-outlook-check-" + $stamp + "-" + [IO.Path]::GetFileName($Path))
+Copy-Item -Force $Path $scratch
+Write-Host "Copied to $scratch (Outlook will open the copy, never the original)."
+
+$answer = Read-Host "Attach this copy to the running Outlook profile and read it back? [y/N]"
+if ($answer -notmatch '^[Yy]') { Write-Host "Nothing done."; exit 0 }
+
+Write-Host "Attaching the store (watch the Outlook window for any prompt)..."
 $sw = [Diagnostics.Stopwatch]::StartNew()
 try {
     # olStoreUnicode = 3
@@ -97,10 +129,10 @@ Write-Host "`nOutlook sees:"
 $total = Walk $store.GetRootFolder() 0
 Write-Host "`nTotal items visible to Outlook: $total"
 Write-Host "Look at the Outlook window now: the store appears in the folder pane as '$($store.DisplayName)'."
-Write-Host "Open a few messages there. If Outlook showed any error or asked for SCANPST, record it."
+Write-Host "Click into its folders and open a message. Note anything that spins, errors or asks for SCANPST."
 
 Read-Host "Press Enter to detach the store from the profile" | Out-Null
 $ns.RemoveStore($store.GetRootFolder())
 Write-Host "Detached. The profile is as it was. Scratch copy left at $scratch."
-Write-Host "Result: Outlook opened the file and read $total item(s) without SCANPST."
+Write-Host "Result: Outlook attached the file and listed $total item(s) through COM."
 exit 0
