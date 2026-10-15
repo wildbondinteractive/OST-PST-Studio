@@ -15,6 +15,9 @@ export function updateHeadline(s: UpdateStatus): { title: string; detail?: strin
   const st = s.state;
   switch (st.phase) {
     case "idle":
+      // Nothing checked since launch: say what the last session's check found.
+      if (s.lastSuccessMs && s.lastCheckMs === s.lastSuccessMs) return { title: `Last checked ${formatDate(s.lastSuccessMs, "long")}`, tone: "info" };
+      if (s.lastCheckMs) return { title: "The last check for updates did not complete", detail: "It is tried again automatically, or press Check for updates.", tone: "info" };
       return { title: "Updates have not been checked yet", tone: "info" };
     case "checking":
       return { title: "Checking for updates", tone: "info" };
@@ -112,7 +115,11 @@ export function UpdateDialog() {
               <span>Current <strong>{status.currentVersion}</strong></span>
               <span>Available <strong>{info.version}</strong></span>
               {info.dateMs && <span className="text-fg-muted">Released {formatDate(info.dateMs, "long")}</span>}
-              <Badge tone="success" className="ml-auto"><ShieldCheck size={11} /> Signed release</Badge>
+              {st.phase === "ready" || st.phase === "installing" ? (
+                <Badge tone="success" className="ml-auto"><ShieldCheck size={11} /> Signature verified</Badge>
+              ) : (
+                <Badge tone="neutral" className="ml-auto"><ShieldCheck size={11} /> Verified before install</Badge>
+              )}
             </div>
             <div className="max-h-64 overflow-auto px-3 py-2">
               {info.notes ? <ReleaseNotes notes={info.notes} /> : <p className="text-xs text-fg-muted">No release notes were published with this version.</p>}

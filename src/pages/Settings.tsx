@@ -246,7 +246,7 @@ export function SettingsPage() {
                   <div className="min-w-0 flex-1 text-xs">
                     <p className="text-base font-semibold">OST/PST Studio</p>
                     <p className="text-fg-muted">A Wildbond Interactive project. Free and open source, MIT licensed.</p>
-                    <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                    <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 [&>dt]:whitespace-nowrap">
                       <dt className="text-fg-subtle">Version</dt>
                       <dd>{info?.version ?? ""}</dd>
                       <dt className="text-fg-subtle">Engine</dt>

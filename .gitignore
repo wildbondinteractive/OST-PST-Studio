@@ -29,3 +29,6 @@ __pycache__/
 
 # Log written by the sign-command stand-in used by scripts/dev/staged-packaging-check.ps1
 scripts/dev/sign-command.log
+
+# Updater signing keys never belong in the repository (docs/UPDATER.md).
+*.key

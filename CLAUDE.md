@@ -13,8 +13,10 @@ browsing and export. Rust engine (forked from pstfree, MIT) + Tauri 2 + React/Ty
   distinguishes completed, validated-by-this-engine, libpff-verified, and opened in
   Outlook manually.
 - No em dashes anywhere in prose or code comments.
-- No telemetry, no network calls, no remote content in previews unless the user allows
-  it per message.
+- No telemetry, no analytics, no remote content in previews unless the user allows it per
+  message. The only network access is the update check in `src-tauri/src/updater.rs`
+  (mode notify/automatic/off, at most daily, nothing about the user in the request).
+  Never add another without updating `docs/PRIVACY_POLICY.md`.
 - Keep upstream attribution banners at the top of the carried-over engine files.
 - Releases are built, signed and verified only by `.github/workflows/release.yml`
   (Azure Artifact Signing over OIDC in the `release-signing` environment; see
@@ -22,6 +24,14 @@ browsing and export. Rust engine (forked from pstfree, MIT) + Tauri 2 + React/Ty
   repository; the environment holds identifiers only. Local builds are unsigned and
   must never be described as signed. Bump the version in `Cargo.toml`, `package.json`
   and `src-tauri/tauri.conf.json` together before tagging `v<version>`.
+- Updates (`docs/UPDATER.md`): installed copies read `releases/latest/download/latest.json`;
+  publishing a draft release is what ships an update. Never edit assets of a published
+  release. Never change the identifier or productName. Installs are refused while
+  `busy()` (jobs or file operations) is non-zero; keep any new file-writing command inside
+  an `OperationGuard`. The updater private key is a secret on `release-signing`
+  (`TAURI_SIGNING_PRIVATE_KEY`, `..._PASSWORD`), never in the repo; only the public key is
+  in `tauri.conf.json`. Ordinary builds never need it (`createUpdaterArtifacts` stays off;
+  the workflow signs with `tauri signer sign` after Authenticode).
 
 ## Layout
 
@@ -30,7 +40,8 @@ Cargo.toml              workspace: crates/ostpst-core, crates/ostpst-cli, src-ta
 crates/ostpst-core      engine. ndb/ltp/convert/repair/export/crypt/cfbf/html are upstream;
                         mailbox/model/jobs/report/validate/amap/cache/ostfix/heapw/exporters/fsutil/props are new
 crates/ostpst-cli       `ostpst` command line (technicians, automation, --json)
-src-tauri               Tauri host: commands (lib.rs), job manager (jobs.rs), settings.rs;
+src-tauri               Tauri host: commands (lib.rs), job manager (jobs.rs), settings.rs, updater.rs
+                        (+ updater_tests.rs, examples/verify_update_signatures.rs);
                         tauri.release.conf.json adds the sign command for release builds only
 src                     React UI: lib/api.ts mirrors model.rs; pages/*, components/*
 fixtures/               fetch script writes fixtures/data (gitignored)
@@ -38,7 +49,7 @@ tests/                  libpff_compare.py (independent validation), upstream bak
 docs/                   audit, status, test results, competitor matrix, Outlook notes
 scripts/                fetch-fixtures.ps1, outlook-check.ps1 (manual), verify-signatures.ps1,
                         azure-sign.ps1 (the bundler's sign command, CI only), third-party-notices.py,
-                        dev/ (staged-packaging-check.ps1, log-sign-command.ps1)
+                        dev/ (staged-packaging-check.ps1, log-sign-command.ps1, updater_staging_test.py)
 .github/workflows/      ci.yml (build + test + installer artifacts, unsigned), release.yml (tag:
                         build, sign exes, bundle, sign installers, verify, draft release)
 ```
@@ -57,6 +68,7 @@ npm run tauri dev                   # desktop app with hot reload
 npm run tauri build                 # release exe + NSIS + MSI in src-tauri/target/release/bundle
 cargo build --release -p ostpst-cli # target/release/ostpst.exe
 python tests/libpff_compare.py <source> <output>   # needs: pip install libpff-python
+python scripts/dev/updater_staging_test.py         # real install-and-update with a throwaway key
 ```
 
 ## Conventions

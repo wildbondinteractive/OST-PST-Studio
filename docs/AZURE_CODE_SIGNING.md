@@ -108,8 +108,21 @@ variables; **variables**, not secrets, because none of them is secret):
 | `AZURE_CERT_PROFILE` | `WildbondPublicTrust` |
 | `RELEASE_SIGNER_SUBJECT` | Optional. Text the signer certificate's subject must contain, normally the CN as the certificate profile shows it. When set, verification fails if a different identity signed. When empty, the subject is reported but not checked. |
 
-The workflow reads all of these with `${{ vars.NAME }}` at run time. There are no
-secrets to add: OIDC replaces them.
+The workflow reads all of these with `${{ vars.NAME }}` at run time. OIDC replaces any
+Azure secret.
+
+Environment **secrets** (Settings, Environments, `release-signing`, Environment secrets).
+These are not for Azure: they sign updates for the in-app updater, a separate mechanism
+described in [UPDATER.md](UPDATER.md).
+
+| Secret | Value |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY` | The content of the updater's private key file |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Its password |
+
+The release fails at "Sign the installers for the in-app updater" when they are missing,
+and at the verification after it when they do not match the public key in
+`src-tauri/tauri.conf.json`.
 
 ### What the workflow asks GitHub for
 
@@ -129,19 +142,23 @@ tightens later.
 2. Tag and push:
 
    ```powershell
-   git tag v0.1.2
-   git push origin v0.1.2
+   git tag v0.1.3
+   git push origin v0.1.3
    ```
 
-   For a release candidate use `v0.1.2-rc.1`; the manifests still say `0.1.2`, and the
-   release is marked as a pre-release.
+   For a release candidate use `v0.1.3-rc.1`; the manifests still say `0.1.3`, and the
+   release is marked as a pre-release (and gets no update manifest, so no installed copy
+   is ever offered it).
 3. The `release` workflow runs. In order: tag check, build, tests, Azure login over
    OIDC, `tauri bundle` with `src-tauri/tauri.release.conf.json` (the bundler calls
    `scripts/azure-sign.ps1` for the executable as it packages each installer, for the
    NSIS uninstaller stub, and for each finished installer), sign the portable executable
    and the command-line tool with `azure/artifact-signing-action`, verify everything
-   including the executable inside each installer, write `SHA256SUMS.txt`, upload, and
-   create a **draft** release with the five files attached.
+   including the executable inside each installer, sign the two installers for the in-app
+   updater and verify those signatures, write `latest.json` (stable tags), write
+   `SHA256SUMS.txt`, upload, and create a **draft** release with the six files attached
+   (five for a release candidate). Publishing the draft is what makes installed copies
+   offer the update.
 
 ### Why signing is hooked into the bundler
 

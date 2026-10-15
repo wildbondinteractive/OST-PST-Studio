@@ -858,10 +858,21 @@ fn update_status(app: AppHandle) -> UpdateStatus {
     updater::status(&app)
 }
 
-/// "Check for updates": runs whatever the update mode.
+/// "Check for updates": runs whatever the update mode. In automatic mode a found update
+/// starts downloading in the background, as a scheduled check would.
 #[tauri::command]
 async fn update_check(app: AppHandle) -> Result<UpdateStatus, String> {
-    Ok(updater::check(&app, true).await)
+    let status = updater::check(&app, true).await;
+    if status.mode == updater::UpdateMode::Automatic
+        && status.install_kind.installs_updates()
+        && matches!(status.state, updater::Phase::Available { .. })
+    {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = updater::download(&app).await;
+        });
+    }
+    Ok(status)
 }
 
 #[tauri::command]

@@ -124,13 +124,26 @@ can still see "Windows protected your PC" until that reputation has accumulated.
 expected, it is not a sign that the file is wrong, and this project does not claim
 signing removes it.
 
+## Updates inside the application
+
+From 0.1.3 the application can update itself. Each update carries a second signature,
+separate from Authenticode: the release workflow signs the two finished installers with
+the project's updater key (minisign, Ed25519) after all Authenticode signing, binding the
+version number into the signature. Installed copies verify that signature against the
+public key compiled into them and refuse anything that does not match, before anything
+is run. The private updater key is held as a secret on the protected `release-signing`
+environment and in the maintainer's offline backup; it never enters the repository. The
+mechanism, the key handling and the rotation procedure are in
+[docs/UPDATER.md](UPDATER.md).
+
 ## What the software does with your data
 
-OST/PST Studio processes mailboxes entirely on the user's computer, makes no network
-connections, collects no telemetry and contains no update check. The one network action
-is the installer fetching Microsoft's WebView2 runtime when it is absent from the PC.
-The full statement is in [docs/PRIVACY_POLICY.md](PRIVACY_POLICY.md); third-party
-components are listed in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+OST/PST Studio processes mailboxes entirely on the user's computer and collects no
+telemetry. Its only network access of its own is the update check, which the user
+controls (notify, automatic or off) and which carries nothing about their mailboxes. The
+installer also fetches Microsoft's WebView2 runtime when it is absent from the PC. The
+full statement is in [docs/PRIVACY_POLICY.md](PRIVACY_POLICY.md); third-party components
+are listed in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 
 ## Installation and removal
 

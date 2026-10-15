@@ -1,7 +1,7 @@
 // Shown when the window is closed while work is running. The host refused the close; this
 // says what is running and lets the user keep working or stop it and close.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import { useApp } from "@/lib/store";
@@ -11,7 +11,10 @@ import { Button, Dialog, DialogContent, DialogFooter, Spinner } from "@/componen
 export function CloseGuard() {
   const busy = useApp((s) => s.closeBlocked);
   const setBusy = useApp((s) => s.setCloseBlocked);
-  const jobs = useApp((s) => s.jobs.filter((j) => j.status === "running" || j.status === "queued"));
+  // Select the stable array and derive from it: a selector returning a new array on every
+  // read makes the store notify forever (React error 185).
+  const allJobs = useApp((s) => s.jobs);
+  const jobs = useMemo(() => allJobs.filter((j) => j.status === "running" || j.status === "queued"), [allJobs]);
   const toast = useApp((s) => s.toast);
   const [closing, setClosing] = useState(false);
 

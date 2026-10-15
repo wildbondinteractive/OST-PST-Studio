@@ -1,7 +1,8 @@
 # OST/PST Studio
 
 Open, browse, search, convert, repair and export Outlook **OST** and **PST** files on
-Windows. No Outlook, no Exchange connection, no upload, no licence. MIT.
+Windows. No Outlook, no Exchange connection, no upload, no licence. MIT. A Wildbond
+Interactive project.
 
 Built on the [pstfree](https://github.com/sp00nznet/pstfree) engine (MIT), with a new
 desktop application (Tauri 2, React, TypeScript), a job system with real progress and
@@ -30,6 +31,12 @@ libpff, and a technician command line.
   cancellation and retry.
 - **Reports** every job as JSON, HTML or text: counts, corruption, recovery actions,
   validation checks, and exactly how far Outlook compatibility was established.
+- **Updates itself** (from 0.1.3): checks the project's GitHub releases, shows the release
+  notes, downloads and verifies a signed update, and installs it only when nothing is
+  running. You choose Notify (default), Automatic or Off.
+- **Remembers** recent mailboxes (with one-click reopen, missing-file detection and
+  removal), optionally the last session and the last folder viewed; opens files dropped
+  on the window; Ctrl+O, Ctrl+F, F5 and Ctrl+, shortcuts.
 
 ## Install
 
@@ -56,6 +63,13 @@ Signing; 0.1.0 and 0.1.1 are unsigned. See "Verifying a download" below. Windows
 SmartScreen can still warn on a correctly signed file from a project this new ("More
 info", "Run anyway"); a valid signature identifies the publisher, it does not buy
 reputation.
+
+**Updates.** From 0.1.3 the application updates itself from this repository's releases
+(Settings, Software updates). 0.1.2 and earlier have no updater: install 0.1.3 once by
+hand, over the top of the old version, and later versions arrive in the app. An MSI
+install updates with the MSI and a setup-program install with the setup program, so the
+installation stays as it was; the portable executable and the command-line tool do not
+update themselves. How it works and how it is secured: [docs/UPDATER.md](docs/UPDATER.md).
 
 ## Build
 
@@ -105,8 +119,11 @@ Full status: `docs/IMPLEMENTATION_STATUS.md`. Test results: `docs/TEST_RESULTS.m
 
 ## Privacy
 
-Mailboxes are processed entirely on your computer; the application makes no network
-connections and collects no telemetry. See [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md).
+Mailboxes are processed entirely on your computer and never leave it. There is no
+telemetry, tracking or crash reporting. The application's only network access of its own
+is the update check, which asks GitHub for one small file at most once a day, carries
+nothing about your mailboxes, and can be turned off; browsing, conversion, repair and
+export work fully offline. See [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md).
 
 ## Code signing policy
 

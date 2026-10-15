@@ -15,6 +15,8 @@ it; recorded when done).
 | `ostpst-core` unit tests (upstream 60 + new 24) | 84 | PASS |
 | `ostpst-core` ANSI PST fixture tests | 7 | PASS |
 | `ostpst-core` fuzz (8 rounds per fixture, sector-aligned damage) | 1 | PASS, no panic, no hang |
+| `ostpst-studio` host tests: updater rules, settings and history (0.1.3) | 12 | PASS |
+| `ostpst-studio` updater against a local server, real plugin in a mock app (0.1.3) | 22 | PASS |
 | `cargo clippy --workspace --all-targets -- -D warnings` | | PASS (clean) |
 | `cargo fmt --all --check` | | PASS |
 
@@ -37,6 +39,88 @@ spilled value round-trips, fill levels), `ltp` (4K heap ids split differently).
 | `example-2013.ost` converted with allocation maps (CLI) | 46 folders, 3 messages, 202 properties | 46 / 3 / 202 | PASS, identical id for id |
 | `example-2013.ost` converted with allocation maps (GUI) | same | same | PASS |
 | `dist-list.pst` repaired with allocation maps | 24 folders, 4 messages, 287 properties | 24 / 4 / 287 | PASS |
+
+## In-app updater (0.1.3)
+
+### Automated, on every CI run (`cargo test -p ostpst-studio`)
+
+The real `tauri-plugin-updater` 2.14 runs inside a mock Tauri app against an HTTP server
+on 127.0.0.1, with fixtures signed once by a throwaway key (only its public key is in the
+repository). Every case PASS:
+
+| Case | Expected and observed |
+|---|---|
+| Newer stable release | Found, with version, notes and date; downloaded; verified; ready |
+| Same version, older version | Up to date; nothing offered |
+| Prerelease (`0.2.0-rc.1`) | Not offered |
+| No network (closed port) | Failure kind `network`; attempt recorded, no success recorded |
+| Endpoint 404 and 500 | Failure kind `unavailable` |
+| Malformed JSON, missing version, missing platforms, invalid version | Failure kind `metadata` |
+| Manifest without this installer type | Failure kind `metadata`; not installed from the other type |
+| Tampered package | Failure kind `signature`; nothing kept |
+| Package signed by another key | Failure kind `signature` |
+| Genuine signature for an older version (replay) | Failure kind `signature` (`requireSignedVersion`) |
+| Signature that is not base64 | Failure kind `signature` |
+| Download returns 503 | Failure kind `network`; the update stays known for a retry |
+| Updates off, manual check | No request until asked; then found |
+| Background check fails after an update was found | Update still shown; a manual check reports the failure |
+| NSIS install / MSI install | Each downloads only its own installer type |
+| Portable copy | Told about the update; download refused; no installer requested |
+| Queued job, then a file operation | Install refused with the reason; still ready; install-on-close withheld until idle |
+| Notify mode | Never installs on close |
+| Install before download | Refused |
+| Remind me later | Snoozes that version; still visible in Settings |
+| Shipped configuration | Stable HTTPS endpoint only, `requireSignedVersion`, passive mode, no insecure flags, a valid minisign public key, no updater artifacts in ordinary builds |
+| Settings and history | Old settings files load with the new defaults; update mode survives a restart; recent list capped at ten, keeps the last folder; session paths kept once; missing files detected |
+
+### Real install and update on Windows (`scripts/dev/updater_staging_test.py`)
+
+Run on the development PC on 2026-10-15. Two release builds of the application under a
+separate name and identifier ("OST-PST Studio Staging"), a throwaway key, a local server
+standing in for GitHub. 26 of 26 checks PASS:
+
+| Step | Result |
+|---|---|
+| 0.1.3 installed per user by its NSIS installer; window renders; reports NSIS and 0.1.3 | PASS |
+| Check finds 0.1.4; the notice and the dialog offer Download and install | PASS |
+| Download verified; the NSIS installer only was fetched; dialog offers Restart to update | PASS |
+| Install: the app exits, the passive installer replaces it, the new version starts by itself | PASS |
+| Installed executable is 0.1.4; the window renders; reports NSIS and 0.1.4; no further update | PASS |
+| Exactly one entry in Installed apps afterwards | PASS |
+| The executable taken out of the 0.1.3 MSI reports MSI, downloads and verifies the MSI only | PASS (not installed: an MSI install needs an elevation prompt, unattended here) |
+| The bare executable reports portable, is told about 0.1.4, refuses to download, requests no installer | PASS |
+| Staging installation and its data removed afterwards | PASS |
+
+The first run of this test passed every functional check but its screenshots showed an
+empty window: a store selector in the close guard returned a new array on every read,
+which React rejects (error 185) in a release build. Fixed; the test now also checks that
+the window renders before and after the update.
+
+### Release pipeline additions
+
+| Check | Result |
+|---|---|
+| `examples/verify_update_signatures.rs` on a set where one signature binds the wrong version | Reports it and exits 1 |
+| `release.yml` parses; updater steps: sign after Authenticode verification, verify with the app's public key, manifest for stable tags only, `latest.json` counted in the published set | PASS (YAML); first live run is the v0.1.3 tag |
+| Staged packaging with the release configuration after the 0.1.3 changes: bundler order unchanged (executable NSS, uninstaller stub, NSIS installer, executable MSI, MSI) | PASS |
+| Release executable: version 0.1.3, Common Controls manifest embedded by the linker, `asInvoker` | PASS |
+| `scripts/verify-signatures.ps1` on the published, signed 0.1.2 files | 65 of 65 PASS |
+
+### User interface (release build under a test identifier, `ui_smoke` via CDP)
+
+Dashboard with Recent mailboxes; a fixture mailbox opens and appears in the list; every
+Settings tab opens; About names the publisher and the project; the three update modes
+and the installed version are shown; F5 refreshes without reloading the window; a
+Settings field keeps focus while typing (it lost focus after each character in 0.1.2); no
+uncaught errors. 13 of 13 PASS.
+
+### Not yet tested
+
+| Item | Status |
+|---|---|
+| A real update from a published GitHub release | UNTESTED until 0.1.4 is published: 0.1.2 has no updater, and 0.1.3 is the first version that can be updated |
+| The release workflow's updater steps on GitHub | UNTESTED until the production updater key is configured and v0.1.3 is tagged |
+| MSI in-place install | UNTESTED end to end (download and verification PASS; the install needs elevation) |
 
 ## Real mailbox: 1.57 GB Outlook 2016 OST (not committed, not a fixture)
 

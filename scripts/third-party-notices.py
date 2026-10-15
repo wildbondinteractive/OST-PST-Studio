@@ -15,9 +15,12 @@ import sys
 HEAD = """# Third-party notices
 
 OST/PST Studio is MIT licensed (see LICENSE). It is built from the components below,
-every one of which is distributed under an OSI-approved open-source licence. Nothing
-proprietary and no pre-built third-party binary is included in the application; every
-component is compiled from source by the build described in the README.
+every one of which is distributed under a permissive open-source licence: OSI-approved
+software licences throughout, plus the CDLA-Permissive-2.0 data licence for the Mozilla
+root certificate list (`webpki-root-certs`) that the update check uses to trust
+github.com. Nothing proprietary and no pre-built third-party binary is included in the
+application; every component is compiled from source by the build described in the
+README.
 
 This file is generated from the lock files (`Cargo.lock`, `package-lock.json`) by
 `scripts/third-party-notices.py`; regenerate it when dependencies change.

@@ -56,6 +56,25 @@ a signature. The repository is https://github.com/wildbondinteractive/OST-PST-St
 The workflow never publishes on its own. If anything in the run looks wrong, delete the
 draft and the tag and fix the source first.
 
+## The in-app updater
+
+Publishing a release is also what delivers it to installed copies (0.1.3 and later): they
+read the `latest.json` attached to the newest published, non-prerelease release. So:
+
+- Publish a draft only when it is ready for everyone; installed copies see it within a day.
+- Never replace or edit the assets of a published release. Fix a bad release with a new
+  version.
+- The workflow refuses to sign for the updater without the `TAURI_SIGNING_PRIVATE_KEY`
+  secret, and refuses to publish if the signatures do not verify with the public key in
+  `src-tauri/tauri.conf.json`.
+- For a significant change to the updater, run the real install-and-update test first:
+
+  ```powershell
+  python scripts\dev\updater_staging_test.py
+  ```
+
+Design, keys, rotation and troubleshooting: `docs/UPDATER.md`.
+
 ## Signing
 
 Releases are signed through Microsoft Azure Artifact Signing by the release workflow,
