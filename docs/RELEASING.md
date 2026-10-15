@@ -94,15 +94,13 @@ applies an RFC 3161 timestamp from `http://timestamp.digicert.com` (override wit
 
 ```powershell
 cargo build --release -p ostpst-cli
-powershell -File scripts\sign.ps1 target
-elease\ostpst.exe
+powershell -File scripts\sign.ps1 target\release\ostpst.exe
 ```
 
 ### 4. Verify before publishing
 
 ```powershell
-Get-AuthenticodeSignature "targeteleaseundle
-sis\OST-PST Studio_0.1.0_x64-setup.exe" | Format-List Status, SignerCertificate, TimeStamperCertificate
+Get-AuthenticodeSignature "target\release\bundle\nsis\OST-PST Studio_0.1.0_x64-setup.exe" | Format-List Status, SignerCertificate, TimeStamperCertificate
 ```
 
 `Status` must be `Valid` and the timestamper must be present. Then, in File Explorer,
