@@ -30,7 +30,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBGRjdBNTg0ODE1RDg3OTUKUldTVmgxMkJoS1gzRHlyS0NrTFFob1hRc0x4Z1Q3OHFtejdqSDNFNk1kN1gydUNOZG1FWDBjNloK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUyQjdENzE5QjgxMkNBNkYKUldSdnloSzRHZGUzVWhBN1BhcnhKVWRkMFRwWWUweGUvQVZhazRkOTBhR20rZjBHU2lsMkJZWFcK",
       "endpoints": [
         "https://github.com/wildbondinteractive/OST-PST-Studio/releases/latest/download/latest.json"
       ],
