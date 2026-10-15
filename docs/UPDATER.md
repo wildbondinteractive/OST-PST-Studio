@@ -86,7 +86,8 @@ later version can reach them in the app.
 
 ### Generating the production key pair (once)
 
-On the maintainer's own PC, outside the repository, with a password:
+On the maintainer's own PC, from the repository folder (so `npx` finds the project's
+Tauri CLI), writing the key outside the repository, with a password:
 
 ```powershell
 New-Item -ItemType Directory -Force "$env:USERPROFILE\.tauri" | Out-Null
@@ -106,12 +107,12 @@ to the same name with `.pub`. Then:
    **secrets** (Settings, Environments, `release-signing`, Environment secrets):
 
    ```powershell
-   gh secret set TAURI_SIGNING_PRIVATE_KEY --env release-signing --repo wildbondinteractive/OST-PST-Studio < "$env:USERPROFILE\.tauri\ostpst-studio-updater.key"
+   Get-Content "$env:USERPROFILE\.tauri\ostpst-studio-updater.key" -Raw | gh secret set TAURI_SIGNING_PRIVATE_KEY --env release-signing --repo wildbondinteractive/OST-PST-Studio
    gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --env release-signing --repo wildbondinteractive/OST-PST-Studio
    ```
 
-   The second command prompts for the value, so the password never appears in the shell
-   history.
+   The first pipes the key file without printing it. The second prompts for the value, so
+   the password never appears in the shell history.
 
 The key never enters the repository. `.gitignore` excludes `*.key`.
 
