@@ -94,7 +94,8 @@ applies an RFC 3161 timestamp from `http://timestamp.digicert.com` (override wit
 
 ```powershell
 cargo build --release -p ostpst-cli
-powershell -File scripts\sign.ps1 targetelease\ostpst.exe
+powershell -File scripts\sign.ps1 target
+elease\ostpst.exe
 ```
 
 ### 4. Verify before publishing
