@@ -140,7 +140,7 @@ export function ReportView({ report, jobId }: { report: JobReport; jobId?: strin
   const outlook = {
     unverified: ["neutral", "Outlook compatibility not verified"],
     requiresScanpst: ["warning", "Outlook will ask for SCANPST before opening this file (allocation maps marked invalid)"],
-    mapsWritten: ["success", "Written with valid allocation maps; expected to open in Outlook directly (not yet confirmed in Outlook)"],
+    mapsWritten: ["success", "Written with valid allocation maps; files written this way open directly in classic Outlook in testing"],
     verifiedManually: ["success", "Confirmed in Outlook manually"],
   }[report.outlook] as [Parameters<typeof Badge>[0]["tone"], string];
   const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (

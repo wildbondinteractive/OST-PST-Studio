@@ -99,7 +99,9 @@ message counts, every folder readable, every message readable).
 | Check | Result |
 |---|---|
 | Converted PST (first build) attached in classic Outlook | MANUAL, done: attached, folder never loaded. Cause found and fixed (foreign entry ids); see `docs/OUTLOOK_COMPATIBILITY.md` |
-| Converted PST with re-pointed links opened in classic Outlook | MANUAL, not yet done. Files for the isolation test are in `fixtures/out/outlook-test/` |
+| Converted OST (re-pointed links, maps written) opened in classic Outlook | MANUAL, done: PASS. Attached directly, 24 folders, messages readable, special folders resolve, no SCANPST |
+| Repaired PST (maps written) opened in classic Outlook | MANUAL, done: PASS. Attached directly, correct item counts, no SCANPST |
+| Converted OST with maps marked invalid | MANUAL, done: Outlook refuses the file ("failed to load for this session"), which is the upstream behaviour the map writer removes |
 | `.msg` export opened in Outlook | MANUAL, not yet done |
 
 ## Not covered by any fixture

@@ -75,8 +75,9 @@ pub enum OutlookCompatibility {
     /// The file is structurally complete but its allocation maps are marked invalid;
     /// Outlook will ask for the Inbox Repair Tool (SCANPST) before opening it.
     RequiresScanpst,
-    /// Written with valid allocation maps. Expected to open directly; still this
-    /// engine's own claim rather than Outlook's.
+    /// Written with valid allocation maps. Files written this way opened directly in
+    /// classic Outlook during testing on the public fixtures; this particular file has
+    /// not been opened in Outlook.
     MapsWritten,
     /// Opened in Outlook by a person and confirmed. Set only by a manual workflow.
     VerifiedManually,
@@ -284,7 +285,7 @@ impl JobReport {
                 OutlookCompatibility::RequiresScanpst =>
                     "allocation maps marked invalid; Outlook will require SCANPST before opening",
                 OutlookCompatibility::MapsWritten =>
-                    "written with valid allocation maps (not yet confirmed in Outlook)",
+                    "written with valid allocation maps; files written this way open directly in classic Outlook in testing (this file itself was not opened in Outlook)",
                 OutlookCompatibility::VerifiedManually =>
                     "opened in Outlook and confirmed manually",
             }
@@ -347,7 +348,7 @@ impl JobReport {
                 OutlookCompatibility::Unverified => "not verified",
                 OutlookCompatibility::RequiresScanpst => "requires SCANPST",
                 OutlookCompatibility::MapsWritten => {
-                    "valid allocation maps written (unconfirmed in Outlook)"
+                    "valid allocation maps written; opens directly in classic Outlook in testing"
                 }
                 OutlookCompatibility::VerifiedManually => "confirmed manually in Outlook",
             },

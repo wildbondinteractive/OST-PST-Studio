@@ -256,7 +256,7 @@ export function ConvertWizard({ mode }: { mode: "convert" | "repair" }) {
                   <ArrowRightLeft size={14} /> {isConvert ? "Convert another file" : "Repair another file"}
                 </Button>
                 {job.report?.outlook === "mapsWritten" && (
-                  <span className="flex items-center gap-1 text-xs text-fg-muted"><ShieldCheck size={13} className="text-success" /> Validated by this engine and written with valid allocation maps. Open it in Outlook to confirm; see the manual check in the docs.</span>
+                  <span className="flex items-center gap-1 text-xs text-fg-muted"><ShieldCheck size={13} className="text-success" /> Validated by this engine and written with valid allocation maps, which is what lets classic Outlook open it directly. Confirmed on the test fixtures; check your own file in Outlook too.</span>
                 )}
               </div>
             )}

@@ -37,13 +37,30 @@ Lesson for the check itself: a store that Outlook cannot finish loading stays at
 to the profile until it is removed, and the profile spins at every start. The check now
 insists on a throwaway profile (`OUTLOOK.EXE /pim OSTPST-Test`).
 
+**2026-10-14, later the same day, classic Outlook (Microsoft 365, the installed
+Office16 build), throwaway profile `OSTPST-Test`, driven through COM from a background
+job (`scripts/outlook-check.ps1`).** Three files, each attached with
+`Namespace.AddStoreEx`, walked folder by folder, special folders resolved with
+`Store.GetDefaultFolder`, first Inbox message read, then detached:
+
+| File | Outlook |
+|---|---|
+| C: `dist-list.pst` repaired to a new PST, allocation maps written | Attached in under a second. 12 folders listed, Calendar 1 item, Contacts 2 items. No SCANPST prompt. |
+| A: `example-2013.ost` converted with re-pointed links, allocation maps written | Attached in under a second. 24 folders, Inbox 2 items, Sent Items 1. Default Inbox, Calendar, Contacts, Tasks, Notes and Journal all resolve to the OST's own "(This computer only)" folders. First message's subject, sender and body read correctly. No SCANPST prompt. |
+| B: the same conversion with the maps marked invalid (`--no-maps`) | Refused at once: "The Outlook data file (.pst) failed to load for this session." Outlook did not offer to repair it. |
+
+So the two things this project added on top of pstfree are each load-bearing in
+Outlook: without valid allocation maps the file is refused outright, and without the
+re-pointed store and folder links the folder never finishes loading.
+
 ## Current standing (2026-10-14)
 
 | Output | Engine validation | libpff | Outlook |
 |---|---|---|---|
 | `example-2013.ost` converted to PST, maps written, first build | Passed, 11 checks | Identical: 46 folders, 3 messages, 202 properties | Attached; folder never loaded (see findings) |
-| `example-2013.ost` converted with re-pointed links, maps written | Passed, 11 checks | Identical | Not yet opened |
-| `dist-list.pst` repaired to a new PST, maps written | Passed | Identical: 24 folders, 4 messages, 287 properties | Not yet opened |
+| `example-2013.ost` converted with re-pointed links, maps written | Passed, 11 checks | Identical | **Opened directly**, folders and messages readable, special folders resolve |
+| `dist-list.pst` repaired to a new PST, maps written | Passed | Identical: 24 folders, 4 messages, 287 properties | **Opened directly**, all folders and item counts correct |
+| `example-2013.ost` converted, maps marked invalid | Passed with warning | Identical | Refused: "failed to load for this session" |
 | `dist-list.pst` with both B-tree roots zeroed, salvaged and repaired | Passed (upstream test) | libpff reads all 4 messages (upstream bake-off) | Not yet opened |
 
 Upstream pstfree reports one real-world data point: a user converted a customer OST,
@@ -51,7 +68,8 @@ Outlook asked for SCANPST because the allocation maps were marked invalid, and o
 file after SCANPST and after the message-store fixes that are now part of this engine.
 This engine additionally writes valid AMap, PMap, FMap, FPMap and DList pages and marks
 the header `VALID_AMAP2`, which removes the documented reason for the SCANPST prompt.
-Whether it removes the prompt in practice has not been observed yet.
+Observed on 2026-10-14: with the maps written Outlook opens the file directly; with them
+marked invalid it refuses the file outright.
 
 ## How to check in Outlook
 

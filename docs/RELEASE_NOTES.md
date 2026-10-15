@@ -33,10 +33,10 @@ PST files, built on the pstfree engine (MIT).
 
 ## Known limits
 
-- Files written by this release have not yet been opened in Outlook by a person; the
-  allocation maps are written to the specification and the result is validated by this
-  engine and by libpff. See `docs/OUTLOOK_COMPATIBILITY.md` and
-  `scripts/outlook-check.ps1`.
+- Outlook compatibility was confirmed on the two public fixtures (a converted OST and a
+  repaired PST open directly in classic Outlook, no SCANPST). Larger real-world files
+  have not been tried; `scripts/outlook-check.ps1` is the manual check. See
+  `docs/OUTLOOK_COMPATIBILITY.md`.
 - Exporting a selection to a new PST, PST splitting and PDF export are not in this
   release.
 - The installers are not code-signed; Windows SmartScreen will warn on first run.

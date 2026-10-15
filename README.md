@@ -65,9 +65,10 @@ Add `--json` to any command for machine-readable output.
 
 ## Honest limits
 
-- Outlook compatibility of written files is established by this engine's validation and
-  by libpff reading the result, not by Outlook itself. A manual Outlook check script is
-  in `scripts/outlook-check.ps1`. See `docs/OUTLOOK_COMPATIBILITY.md`.
+- Outlook compatibility has been confirmed by opening converted and repaired fixtures in
+  classic Outlook (they open directly, no SCANPST), but only on the two public fixtures.
+  `scripts/outlook-check.ps1` is the manual check for your own files. See
+  `docs/OUTLOOK_COMPATIBILITY.md`.
 - Where FMap and FPMap pages recur in files over 125 MB and 2 GB is derived from the
   specification's figures, not observed in a file Outlook wrote.
 - ANSI PST support has only been tested against a fixture written from the specification.
