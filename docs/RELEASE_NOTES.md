@@ -38,14 +38,19 @@ small public fixtures.
   independent comparison could only be run on the public fixtures, where it reports the
   output identical to the source.
 
+## Code signing policy
+
+OST/PST Studio v0.1.1 is currently unsigned. Windows may display SmartScreen warnings
+when installing or running this release.
+
+For information about code signing, release verification, and our planned SignPath
+Foundation integration, please see our
+[Code signing policy](https://github.com/wildbondinteractive/OST-PST-Studio/blob/main/docs/CODE_SIGNING_POLICY.md).
+
 ## Requirements
 
 Windows 10 or 11, 64-bit. The WebView2 runtime (included in current Windows; the
 installer fetches it if missing). The command-line tool has no dependencies.
-
-The installers are not code-signed; Windows SmartScreen will warn on first run. An
-application to SignPath Foundation's free signing programme for open-source projects
-is pending; see `docs/CODE_SIGNING_POLICY.md`.
 
 ## Provenance
 

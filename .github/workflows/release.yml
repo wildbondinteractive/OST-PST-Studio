@@ -128,17 +128,16 @@ jobs:
         shell: bash
         run: |
           {
+            # docs/RELEASE_NOTES.md carries the "Code signing policy" section itself and
+            # says the release is unsigned; only a signed build adds to that.
             cat docs/RELEASE_NOTES.md
             echo
-            echo "## Code signing policy"
-            echo
             if [ "${{ needs.sign.result }}" = "success" ]; then
+              echo "## Signature"
+              echo
               echo "Free code signing provided by SignPath.io, certificate by SignPath Foundation."
-            else
-              echo "These binaries are NOT code-signed. Windows SmartScreen will warn on first run."
+              echo
             fi
-            echo "See https://github.com/${{ github.repository }}/blob/main/docs/CODE_SIGNING_POLICY.md"
-            echo
             echo "## SHA-256"
             echo
             echo '```'
