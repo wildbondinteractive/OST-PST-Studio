@@ -42,13 +42,28 @@ export function BatchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
 
+  const addPaths = async (picked: string[]) => {
+    const paths = picked.filter((p, i) => picked.indexOf(p) === i && !items.some((it) => it.path === p));
+    if (paths.length === 0) return;
+    const probes = await Promise.all(paths.map((p) => api.probeFile(p).catch(() => null)));
+    setItems((s) => [...s, ...paths.filter((p) => !s.some((it) => it.path === p)).map((path) => ({ path, probe: probes[paths.indexOf(path)], jobId: null }))]);
+  };
   const addFiles = async () => {
     const picked = await open({ multiple: true, filters: [{ name: "Outlook data files", extensions: ["pst", "ost"] }] });
     if (!picked) return;
-    const paths = (Array.isArray(picked) ? picked : [picked]).filter((p) => !items.some((i) => i.path === p));
-    const probes = await Promise.all(paths.map((p) => api.probeFile(p).catch(() => null)));
-    setItems((s) => [...s, ...paths.map((path, i) => ({ path, probe: probes[i], jobId: null }))]);
+    await addPaths(Array.isArray(picked) ? picked : [picked]);
   };
+
+  // Files dropped on the window and sent here: queued, never started.
+  const pendingBatchFiles = useApp((s) => s.pendingBatchFiles);
+  const setPendingBatchFiles = useApp((s) => s.setPendingBatchFiles);
+  useEffect(() => {
+    if (pendingBatchFiles.length === 0) return;
+    const files = pendingBatchFiles;
+    setPendingBatchFiles([]);
+    void addPaths(files).then(() => toast({ tone: "info", title: `${files.length} file(s) added to the batch`, detail: "Choose the operation, then press Run." }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingBatchFiles]);
 
   const runAll = async () => {
     if (concurrency !== settings?.maxConcurrentJobs && settings) {

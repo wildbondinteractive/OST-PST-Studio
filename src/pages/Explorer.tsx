@@ -104,10 +104,31 @@ export function Explorer() {
   }, [selectedFolder, list, loadPage]);
 
   useEffect(() => {
-    const h = () => searchRef.current?.focus();
+    const h = () => {
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    };
     window.addEventListener("ostpst:focus-search", h);
     return () => window.removeEventListener("ostpst:focus-search", h);
   }, []);
+
+  // F5: reload the folder list and the current page of messages from the file.
+  useEffect(() => {
+    const h = () => {
+      if (selectedFolder != null && !searchResult) void loadPage(0, list.sort, list.descending, true);
+    };
+    window.addEventListener("ostpst:refresh", h);
+    return () => window.removeEventListener("ostpst:refresh", h);
+  }, [selectedFolder, searchResult, list, loadPage]);
+
+  // Remember the folder last viewed in this mailbox (the host ignores this when the user
+  // has turned it off). Debounced so arrowing through folders does not write each one.
+  useEffect(() => {
+    if (!mb || selectedFolder == null) return;
+    const path = mb.info.path;
+    const t = setTimeout(() => void api.rememberFolder(path, selectedFolder).catch(() => {}), 800);
+    return () => clearTimeout(t);
+  }, [mb, selectedFolder]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -252,7 +273,13 @@ export function Explorer() {
               placeholder="Search mailbox…"
               value={search.text}
               onChange={(e) => setSearch({ ...search, text: e.target.value })}
-              aria-label="Search"
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && (search.text || searchResult)) {
+                  e.preventDefault();
+                  clearSearch();
+                }
+              }}
+              aria-label="Search this mailbox (Ctrl+F)"
             />
             {(search.text || searchResult) && (
               <button type="button" className="absolute right-2 top-2 text-fg-subtle hover:text-fg" onClick={clearSearch} aria-label="Clear search">

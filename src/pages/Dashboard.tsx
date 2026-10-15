@@ -1,10 +1,100 @@
 import { useEffect } from "react";
-import { ArrowRightLeft, Clock, FolderOpen, FolderOutput, Mail, ShieldCheck, Wrench, Activity as ActivityIcon, FileWarning } from "lucide-react";
+import { ArrowRightLeft, Clock, FolderOpen, FolderOutput, Mail, ShieldCheck, Wrench, Activity as ActivityIcon, FileWarning, X } from "lucide-react";
 import { useApp } from "@/lib/store";
-import { errorMessage } from "@/lib/api";
-import { Badge, Button, Card, CardHeader, EmptyState, PageHeader, Progress } from "@/components/ui";
+import { errorMessage, type RecentFile } from "@/lib/api";
+import { Badge, Button, Card, CardHeader, EmptyState, PageHeader, Progress, Tooltip } from "@/components/ui";
 import { pickMailboxFiles } from "@/components/layout/Sidebar";
-import { formatDate, formatDuration, healthLabel, healthTone, humanBytes, jobKindLabel, jobStatusLabel, pluralize } from "@/lib/utils";
+import { cn, dirName, formatDate, formatDuration, healthLabel, healthTone, humanBytes, jobKindLabel, jobStatusLabel, pluralize } from "@/lib/utils";
+
+/// A long path shortened in the middle, so both the drive and the folder that holds the
+/// file stay readable.
+function middleEllipsis(path: string, max = 70) {
+  if (path.length <= max) return path;
+  const head = Math.floor(max * 0.35);
+  return `${path.slice(0, head)}…${path.slice(path.length - (max - head - 1))}`;
+}
+
+function RecentMailboxes({ onOpen }: { onOpen: (path: string) => Promise<void> }) {
+  const history = useApp((s) => s.history);
+  const status = useApp((s) => s.recentStatus);
+  const refresh = useApp((s) => s.refreshRecentStatus);
+  const remove = useApp((s) => s.removeRecent);
+  const clear = useApp((s) => s.clearRecent);
+  const mailboxes = useApp((s) => s.mailboxes);
+  const settings = useApp((s) => s.settings);
+  const toast = useApp((s) => s.toast);
+  const files = history?.recentFiles ?? [];
+
+  useEffect(() => {
+    void refresh().catch(() => {});
+  }, [refresh, files.length]);
+
+  const open = async (f: RecentFile) => {
+    const st = status[f.path];
+    if (st && st.state !== "available") {
+      toast({
+        tone: "warning",
+        title: st.state === "missing" ? `${f.fileName} is not where it was` : `${f.fileName} cannot be opened`,
+        detail: `${st.detail ?? ""}. Remove it from the list, or open the file from its new location.`,
+      });
+      return;
+    }
+    await onOpen(f.path);
+  };
+
+  return (
+    <Card className="lg:col-span-2">
+      <CardHeader
+        title="Recent mailboxes"
+        description={settings && !settings.rememberRecentFiles ? "Not remembered; turn this on under Settings, Privacy." : undefined}
+        action={files.length > 0 ? <Button variant="ghost" size="sm" onClick={() => clear().then(() => toast({ tone: "success", title: "Recent mailboxes cleared" })).catch((e) => toast({ tone: "danger", title: "Could not clear the list", detail: errorMessage(e) }))}>Clear</Button> : undefined}
+      />
+      {files.length === 0 ? (
+        <div className="flex items-center gap-2 px-4 py-4 text-xs text-fg-muted">
+          <Clock size={14} /> Mailboxes you open appear here, so you can reopen them with one click.
+        </div>
+      ) : (
+        <ul className="divide-y divide-border">
+          {files.map((f) => {
+            const st = status[f.path]?.state ?? "available";
+            const gone = st !== "available";
+            const isOpen = mailboxes.some((m) => m.info.path === f.path);
+            return (
+              <li key={f.path} className={cn("group flex items-center gap-1 pr-2 hover:bg-surface-2 focus-within:bg-surface-2", gone && "opacity-70")}>
+                <button className="flex min-w-0 flex-1 items-center gap-3 px-4 py-2.5 text-left" onClick={() => void open(f)} title={f.path}>
+                  <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded text-[10px] font-semibold uppercase", gone ? "bg-surface-3 text-fg-subtle" : "bg-accent-soft text-accent")}>{f.isOst ? "ost" : "pst"}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className={cn("truncate text-[13px]", gone && "line-through decoration-fg-subtle")}>{f.fileName}</span>
+                      {isOpen && <Badge tone="accent">open</Badge>}
+                      {st === "missing" && <Badge tone="warning">not found</Badge>}
+                      {st === "inaccessible" && <Badge tone="danger">no access</Badge>}
+                    </span>
+                    <span className="block truncate text-xs text-fg-subtle">{middleEllipsis(dirName(f.path))}</span>
+                  </span>
+                  <span className="hidden shrink-0 text-right text-xs text-fg-muted sm:block">
+                    <span className="block">{pluralize(f.messageCount, "message")}</span>
+                    <span className="block">{humanBytes(f.sizeBytes)} · {formatDate(f.openedMs)}</span>
+                  </span>
+                  {!gone && <Badge tone={healthTone[f.health]}>{healthLabel[f.health]}</Badge>}
+                </button>
+                <Tooltip content="Remove from the list (the file is not touched)">
+                  <button
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-fg-subtle opacity-0 hover:bg-surface-3 hover:text-fg focus:opacity-100 group-hover:opacity-100"
+                    aria-label={`Remove ${f.fileName} from recent mailboxes`}
+                    onClick={() => void remove(f.path).catch((e) => toast({ tone: "danger", title: "Could not update the list", detail: errorMessage(e) }))}
+                  >
+                    <X size={14} />
+                  </button>
+                </Tooltip>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
+  );
+}
 
 export function Dashboard() {
   const history = useApp((s) => s.history);
@@ -16,16 +106,25 @@ export function Dashboard() {
   const toast = useApp((s) => s.toast);
   const loadHistory = useApp((s) => s.loadHistory);
 
+  const refreshJobs = useApp((s) => s.refreshJobs);
+  const refreshRecentStatus = useApp((s) => s.refreshRecentStatus);
   useEffect(() => {
     void loadHistory();
-  }, [loadHistory]);
+    const h = () => {
+      void loadHistory();
+      void refreshJobs();
+      void refreshRecentStatus().catch(() => {});
+    };
+    window.addEventListener("ostpst:refresh", h);
+    return () => window.removeEventListener("ostpst:refresh", h);
+  }, [loadHistory, refreshJobs, refreshRecentStatus]);
 
   const openPath = async (p: string) => {
     try {
       await openMailbox(p);
       setPage("explorer");
     } catch (e) {
-      toast({ tone: "danger", title: "Could not open the file", detail: errorMessage(e) });
+      toast({ tone: "danger", title: `Could not open ${p.split(/[\\/]/).pop()}`, detail: errorMessage(e) });
     }
   };
   const browse = async () => {
@@ -148,32 +247,8 @@ export function Dashboard() {
           )}
         </Card>
 
-        {/* Recent files */}
-        <Card className="lg:col-span-2">
-          <CardHeader title="Recent files" />
-          {!history?.recentFiles.length ? (
-            <div className="flex items-center gap-2 px-4 py-4 text-xs text-fg-muted">
-              <Clock size={14} /> Files you open appear here for quick access.
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {history.recentFiles.map((f) => (
-                <button key={f.path} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-surface-2" onClick={() => void openPath(f.path)}>
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-surface-3 text-[10px] font-semibold uppercase text-fg-muted">{f.isOst ? "ost" : "pst"}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px]">{f.fileName}</div>
-                    <div className="truncate text-xs text-fg-subtle">{f.path}</div>
-                  </div>
-                  <div className="shrink-0 text-right text-xs text-fg-muted">
-                    <div>{pluralize(f.messageCount, "message")}</div>
-                    <div>{humanBytes(f.sizeBytes)} · {formatDate(f.openedMs)}</div>
-                  </div>
-                  <Badge tone={healthTone[f.health]}>{healthLabel[f.health]}</Badge>
-                </button>
-              ))}
-            </div>
-          )}
-        </Card>
+        {/* Recent mailboxes */}
+        <RecentMailboxes onOpen={openPath} />
 
         {/* Last validation */}
         <Card>

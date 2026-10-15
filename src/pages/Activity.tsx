@@ -19,6 +19,12 @@ export function ActivityPage() {
   useEffect(() => {
     void loadHistory();
     void refreshJobs();
+    const h = () => {
+      void loadHistory();
+      void refreshJobs();
+    };
+    window.addEventListener("ostpst:refresh", h);
+    return () => window.removeEventListener("ostpst:refresh", h);
   }, [loadHistory, refreshJobs]);
 
   const active = jobs.filter((j) => j.status === "running" || j.status === "queued");

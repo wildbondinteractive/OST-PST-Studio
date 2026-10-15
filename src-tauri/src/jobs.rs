@@ -9,7 +9,7 @@ use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Runtime};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -88,9 +88,9 @@ impl JobManager {
         }
     }
 
-    pub fn start(
+    pub fn start<R: Runtime>(
         &self,
-        app: AppHandle,
+        app: AppHandle<R>,
         spec: JobSpec,
         max_concurrent: usize,
         data_dir: PathBuf,
@@ -128,7 +128,7 @@ impl JobManager {
     }
 
     /// Start queued jobs while there is room.
-    fn pump(&self, app: AppHandle, max_concurrent: usize, data_dir: PathBuf) {
+    fn pump<R: Runtime>(&self, app: AppHandle<R>, max_concurrent: usize, data_dir: PathBuf) {
         loop {
             let next = {
                 let mut inner = self.inner.lock().unwrap();
@@ -262,6 +262,33 @@ impl JobManager {
             .jobs
             .get(id)
             .map(|e| e.spec.clone())
+    }
+
+    /// Jobs queued or running: what an update install or closing the window would interrupt.
+    pub fn active_count(&self) -> usize {
+        self.inner
+            .lock()
+            .map(|inner| {
+                inner
+                    .jobs
+                    .values()
+                    .filter(|e| matches!(e.record.status, JobStatus::Queued | JobStatus::Running))
+                    .count()
+            })
+            .unwrap_or(0)
+    }
+
+    /// Ask every queued and running job to stop at its next safe point. Running jobs
+    /// discard their `.partial` output when they stop; originals are never touched.
+    pub fn cancel_all(&self) {
+        let ids: Vec<String> = self
+            .inner
+            .lock()
+            .map(|inner| inner.jobs.keys().cloned().collect())
+            .unwrap_or_default();
+        for id in ids {
+            self.cancel(&id);
+        }
     }
 
     pub fn clear_finished(&self) {

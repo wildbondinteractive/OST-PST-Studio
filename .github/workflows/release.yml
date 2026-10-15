@@ -15,7 +15,13 @@
 #      azure/artifact-signing-action (same signing component, same settings)
 #   6. verify every file to be published, including the executable unpacked from
 #      inside each installer
-#   7. write SHA256SUMS.txt and upload the set as one artifact
+#   7. sign the two finished installers for the in-app updater (minisign, Tauri's key,
+#      the version bound into the signature), after every Authenticode signature exists
+#      and has verified, so the updater signature covers the exact bytes users download
+#   8. verify those signatures with the application's own public key, write latest.json
+#      (stable tags only) from the verified files, and verify the manifest as installed
+#      copies will read it
+#   9. write SHA256SUMS.txt and upload the set as one artifact
 #
 # A second job attaches that set to a draft GitHub Release. It runs only when the first
 # job succeeded, so an unsigned or unverified file can never reach a release. There is
@@ -26,6 +32,17 @@
 # (workload identity federation). No Azure secret, password or key exists in this
 # repository or in GitHub. The environment holds identifiers only (client, tenant,
 # subscription, endpoint, account, certificate profile). See docs/AZURE_CODE_SIGNING.md.
+#
+# The one secret is the in-app updater's minisign private key (TAURI_SIGNING_PRIVATE_KEY,
+# and its password), held on the same protected environment and used only by the step
+# that signs the installers for the updater. It is a different key from the Authenticode
+# certificate and proves a different thing: that an update offered inside the app was
+# produced by this workflow. See docs/UPDATER.md.
+#
+# The update manifest only becomes visible to installed copies when the draft release is
+# published: they read github.com/<repo>/releases/latest/download/latest.json, which
+# resolves to the newest published, non-prerelease release. A draft or a prerelease is
+# never served there, and release candidates get no manifest at all.
 #
 # Tag with: git tag v1.2.3 && git push origin v1.2.3     (or v1.2.3-rc.1 for a pre-release)
 
@@ -223,6 +240,62 @@ jobs:
         shell: pwsh
         run: .\scripts\verify-signatures.ps1 -Path release -Embedded -ExpectedVersion "${{ steps.tag.outputs.version }}" -ExpectedSubject "${{ vars.RELEASE_SIGNER_SUBJECT }}"
 
+      # ---- In-app updater ----------------------------------------------------------------
+      - name: Sign the installers for the in-app updater
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrEmpty($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            throw "the TAURI_SIGNING_PRIVATE_KEY secret is not set on the release-signing environment (docs/UPDATER.md)"
+          }
+          $v = "${{ steps.tag.outputs.version }}"
+          foreach ($f in "release\OST-PST-Studio_${v}_x64-setup.exe", "release\OST-PST-Studio_${v}_x64_en-US.msi") {
+            # Writes <file>.sig; prints the signature (public), never the key.
+            npx tauri signer sign --app-version $v $f | Out-Null
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$f.sig")) { throw "updater signing failed for $f" }
+            "signed for the updater: $f"
+          }
+
+      - name: Build the updater signature verifier
+        run: cargo build --release --locked -p ostpst-studio --example verify_update_signatures
+
+      - name: Update manifest (stable releases only)
+        if: steps.tag.outputs.prerelease != 'true'
+        shell: pwsh
+        run: |
+          $v = "${{ steps.tag.outputs.version }}"
+          $base = "https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}"
+          $nsis = "OST-PST-Studio_${v}_x64-setup.exe"
+          $msi = "OST-PST-Studio_${v}_x64_en-US.msi"
+          $manifest = [ordered]@{
+            version   = $v
+            notes     = (Get-Content docs\RELEASE_NOTES.md -Raw).Trim()
+            pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = [ordered]@{
+              "windows-x86_64-nsis" = [ordered]@{ url = "$base/$nsis"; signature = (Get-Content "release\$nsis.sig" -Raw).Trim() }
+              "windows-x86_64-msi"  = [ordered]@{ url = "$base/$msi"; signature = (Get-Content "release\$msi.sig" -Raw).Trim() }
+            }
+          }
+          # UTF-8 without a byte order mark: the updater's JSON parser rejects one.
+          [System.IO.File]::WriteAllText("$PWD\release\latest.json", ($manifest | ConvertTo-Json -Depth 5), [System.Text.UTF8Encoding]::new($false))
+          Get-Content release\latest.json | Select-Object -First 3
+
+      - name: Verify the updater signatures and the manifest with the app's public key
+        shell: pwsh
+        run: |
+          $v = "${{ steps.tag.outputs.version }}"
+          $files = "release\OST-PST-Studio_${v}_x64-setup.exe", "release\OST-PST-Studio_${v}_x64_en-US.msi"
+          $verifyArgs = @("--config", "src-tauri/tauri.conf.json", "--version", $v)
+          if ("${{ steps.tag.outputs.prerelease }}" -ne "true") {
+            $verifyArgs += @("--manifest", "release/latest.json", "--url-prefix", "https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/")
+          }
+          .\target\release\examples\verify_update_signatures.exe @verifyArgs @files
+          if ($LASTEXITCODE -ne 0) { throw "updater signature verification failed" }
+          # The signatures now live in latest.json; the release set publishes no loose .sig files.
+          Remove-Item release\*.sig
+
       - name: Checksums
         shell: pwsh
         run: |
@@ -261,7 +334,11 @@ jobs:
           cd release
           ls -l
           sha256sum -c SHA256SUMS.txt
-          [ "$(ls -1 | wc -l)" -eq 5 ] || { echo "expected 5 files"; exit 1; }
+          # Four binaries and the checksums, plus the update manifest for a stable release.
+          want=5
+          [ "${{ needs.build-sign-verify.outputs.prerelease }}" = "true" ] || want=6
+          [ "$(ls -1 | wc -l)" -eq "$want" ] || { echo "expected $want files"; exit 1; }
+          if [ "$want" -eq 6 ]; then test -s latest.json; fi
       - name: Release notes
         shell: bash
         run: |

@@ -2,9 +2,10 @@
 // window's view of them plus pure UI state (navigation, selection, panel sizes).
 
 import { create } from "zustand";
-import { api, type FolderInfo, type JobRecord, type OpenedMailbox, type Settings, type History } from "./api";
+import { api, type Busy, type FolderInfo, type JobRecord, type OpenedMailbox, type RecentStatus, type Settings, type History, type UpdateStatus } from "./api";
 
 export type Page = "dashboard" | "explorer" | "convert" | "export" | "repair" | "batch" | "activity" | "settings";
+export type SettingsTab = "general" | "output" | "updates" | "privacy" | "about";
 
 export interface Toast {
   id: number;
@@ -48,7 +49,38 @@ interface AppStore {
   // Pre-filled job targets when navigating from the explorer.
   pendingSource: string | null;
   setPendingSource: (p: string | null) => void;
+  // Files handed to the batch page (from a multi-file drop).
+  pendingBatchFiles: string[];
+  setPendingBatchFiles: (p: string[]) => void;
+
+  settingsTab: SettingsTab;
+  openSettings: (tab?: SettingsTab) => void;
+
+  recentStatus: Record<string, RecentStatus>;
+  refreshRecentStatus: () => Promise<void>;
+  removeRecent: (path: string) => Promise<void>;
+  clearRecent: () => Promise<void>;
+
+  update: UpdateStatus | null;
+  setUpdate: (s: UpdateStatus) => void;
+  updateDialogOpen: boolean;
+  setUpdateDialogOpen: (open: boolean) => void;
+
+  // Closing was refused because work is running; the guard dialog shows this.
+  closeBlocked: Busy | null;
+  setCloseBlocked: (b: Busy | null) => void;
+
+  // Files being dragged over the window, sorted into what can and cannot be opened.
+  drag: DragInfo | null;
+  setDrag: (d: DragInfo | null) => void;
+  // Several mailboxes were dropped at once; the window asks what to do with them.
+  multiDrop: string[] | null;
+  setMultiDrop: (paths: string[] | null) => void;
 }
+
+export interface DragInfo { supported: string[]; unsupported: string[] }
+
+export const isMailboxPath = (p: string) => /\.(pst|ost)$/i.test(p);
 
 let toastSeq = 1;
 
@@ -72,7 +104,7 @@ export const useApp = create<AppStore>((set, get) => ({
       set((s) => ({
         mailboxes: [...s.mailboxes.filter((m) => m.id !== opened.id), opened],
         activeMailboxId: opened.id,
-        selectedFolder: defaultFolder(opened.folders),
+        selectedFolder: startFolder(opened, s.history, s.settings),
         selectedMessages: [],
       }));
       void get().loadHistory();
@@ -131,7 +163,43 @@ export const useApp = create<AppStore>((set, get) => ({
 
   pendingSource: null,
   setPendingSource: (pendingSource) => set({ pendingSource }),
+  pendingBatchFiles: [],
+  setPendingBatchFiles: (pendingBatchFiles) => set({ pendingBatchFiles }),
+
+  settingsTab: "general",
+  openSettings: (tab) => set((s) => ({ page: "settings", settingsTab: tab ?? s.settingsTab })),
+
+  recentStatus: {},
+  refreshRecentStatus: async () => {
+    const list = await api.recentFilesStatus();
+    set({ recentStatus: Object.fromEntries(list.map((r) => [r.path, r])) });
+  },
+  removeRecent: async (path) => set({ history: await api.removeRecentFile(path) }),
+  clearRecent: async () => set({ history: await api.clearRecentFiles(), recentStatus: {} }),
+
+  update: null,
+  setUpdate: (update) => set({ update }),
+  updateDialogOpen: false,
+  setUpdateDialogOpen: (updateDialogOpen) => set({ updateDialogOpen }),
+
+  closeBlocked: null,
+  setCloseBlocked: (closeBlocked) => set({ closeBlocked }),
+
+  drag: null,
+  setDrag: (drag) => set({ drag }),
+  multiDrop: null,
+  setMultiDrop: (multiDrop) => set({ multiDrop }),
 }));
+
+/// Where a freshly opened mailbox starts: the folder last viewed in it when that is
+/// remembered and still exists, otherwise the usual default.
+function startFolder(opened: OpenedMailbox, history: History | null, settings: Settings | null): number | null {
+  if (settings?.rememberLastFolder !== false) {
+    const last = history?.recentFiles.find((f) => f.path === opened.info.path)?.lastFolder;
+    if (last != null && opened.folders.some((f) => f.nid === last && !f.unreadable)) return last;
+  }
+  return defaultFolder(opened.folders);
+}
 
 /// The folder to show first: the Inbox when there is one, else the first folder that
 /// holds anything, else the root's first child.

@@ -43,6 +43,9 @@ export function Sidebar() {
   const openingPath = useApp((s) => s.openingPath);
   const jobs = useApp((s) => s.jobs);
   const toast = useApp((s) => s.toast);
+  const update = useApp((s) => s.update);
+  const openSettings = useApp((s) => s.openSettings);
+  const updateReady = !!update && !update.snoozed && (update.state.phase === "available" || update.state.phase === "ready");
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("sidebar") === "collapsed");
 
   useEffect(() => localStorage.setItem("sidebar", collapsed ? "collapsed" : "open"), [collapsed]);
@@ -56,7 +59,7 @@ export function Sidebar() {
         await openMailbox(f);
         setPage("explorer");
       } catch (e) {
-        toast({ tone: "danger", title: "Could not open the file", detail: errorMessage(e) });
+        toast({ tone: "danger", title: `Could not open ${f.split(/[\\/]/).pop()}`, detail: errorMessage(e) });
       }
     }
   };
@@ -82,7 +85,7 @@ export function Sidebar() {
       </div>
 
       <div className={cn("px-2 pb-2", collapsed && "px-1.5")}>
-        <Tooltip content="Open an OST or PST file (Ctrl+O)" side="right">
+        <Tooltip content="Open an OST or PST file (Ctrl+O), or drop one on the window" side="right">
           <Button variant="primary" className={cn("w-full", collapsed && "px-0")} onClick={doOpen} disabled={!!openingPath}>
             <FolderOpen size={15} />
             {!collapsed && <span>Open file</span>}
@@ -167,9 +170,10 @@ export function Sidebar() {
       {collapsed && <div className="flex-1" />}
 
       <div className={cn("flex items-center gap-1 border-t border-border p-2", collapsed && "flex-col")}>
-        <Tooltip content="Settings (Ctrl+,)" side="right">
-          <Button variant={page === "settings" ? "subtle" : "ghost"} size="icon" onClick={() => setPage("settings")} aria-label="Settings">
+        <Tooltip content={updateReady ? "Settings (Ctrl+,). An update is available." : "Settings (Ctrl+,)"} side="right">
+          <Button variant={page === "settings" ? "subtle" : "ghost"} size="icon" className="relative" onClick={() => (updateReady ? openSettings("updates") : openSettings())} aria-label={updateReady ? "Settings, update available" : "Settings"}>
             <Settings size={16} />
+            {updateReady && <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent ring-2 ring-bg-subtle" aria-hidden />}
           </Button>
         </Tooltip>
         <div className="flex-1" />

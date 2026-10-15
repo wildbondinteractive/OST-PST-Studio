@@ -123,20 +123,54 @@ export interface Settings {
   theme: "system" | "light" | "dark"; defaultOutputDir: string | null; defaultExportFormat: ExportFormat;
   collision: Collision; maxConcurrentJobs: number; writeAllocationMaps: boolean; validateAfterWrite: boolean;
   blockRemoteContent: boolean; showHtmlBodies: boolean; logVerbosity: string; rememberRecentFiles: boolean;
-  checkForUpdates: boolean; messagePageSize: number; useScanCache: boolean; cacheDir: string | null;
+  restoreSession: boolean; rememberLastFolder: boolean; updateMode: UpdateMode;
+  messagePageSize: number; useScanCache: boolean; cacheDir: string | null;
 }
 export interface CacheInfo { dir: string; entries: number; bytes: number }
 export interface RecentFile {
   path: string; fileName: string; sizeBytes: number; isOst: boolean; health: HealthStatus;
-  folderCount: number; messageCount: number; openedMs: number;
+  folderCount: number; messageCount: number; openedMs: number; lastFolder: number | null;
 }
+export type RecentState = "available" | "missing" | "inaccessible";
+export interface RecentStatus { path: string; state: RecentState; detail: string | null }
 export interface PastJob {
   id: string; kind: JobKind; status: JobStatus; source: string; destination: string; finishedMs: number;
   durationMs: number; messages: number; validation: string | null; reportJson: string | null;
 }
-export interface History { recentFiles: RecentFile[]; jobs: PastJob[] }
+export interface History { recentFiles: RecentFile[]; jobs: PastJob[]; session: string[] }
 export interface PathInfo { exists: boolean; isDir: boolean; isFile: boolean; sizeBytes: number; freeSpace: number | null; isEmptyDir: boolean | null }
-export interface AppInfo { version: string; engineVersion: string; dataDir: string; license: string; thirdParty: [string, string, string][] }
+export interface AppInfo {
+  version: string; engineVersion: string; dataDir: string; license: string; thirdParty: [string, string, string][];
+  installKind: InstallKind; repositoryUrl: string;
+}
+
+// Software updates; mirrors src-tauri/src/updater.rs.
+export type UpdateMode = "automatic" | "notify" | "off";
+export type InstallKind = "nsis" | "msi" | "portable";
+export interface UpdateInfo { version: string; currentVersion: string; dateMs: number | null; notes: string | null; releaseUrl: string }
+export type FailureKind = "network" | "unavailable" | "metadata" | "signature" | "install" | "busy" | "unsupported" | "other";
+export type UpdatePhase =
+  | { phase: "idle" }
+  | { phase: "checking" }
+  | { phase: "upToDate" }
+  | { phase: "available"; info: UpdateInfo }
+  | { phase: "downloading"; info: UpdateInfo; received: number; total: number | null }
+  | { phase: "verifying"; info: UpdateInfo }
+  | { phase: "ready"; info: UpdateInfo }
+  | { phase: "installing"; info: UpdateInfo }
+  | { phase: "failed"; kind: FailureKind; message: string; detail: string | null; info: UpdateInfo | null };
+export interface Busy { jobs: number; operations: number }
+export interface UpdateStatus {
+  state: UpdatePhase; mode: UpdateMode; installKind: InstallKind; currentVersion: string;
+  lastCheckMs: number | null; lastSuccessMs: number | null; snoozed: boolean; installOnClose: boolean; busy: Busy;
+}
+export type ProjectLink = "repository" | "releases" | "latest" | "issues" | "license" | "notices" | "privacy" | "signing" | `release:${string}`;
+
+export function updateInfoOf(s: UpdateStatus | null): UpdateInfo | null {
+  if (!s) return null;
+  const st = s.state;
+  return "info" in st ? st.info : null;
+}
 
 export const api = {
   probeFile: (path: string) => invoke<ProbeResult>("probe_file", { path }),
@@ -177,12 +211,26 @@ export const api = {
   writeTextFile: (path: string, content: string) => invoke<void>("write_text_file", { path, content }),
   scanCacheInfo: () => invoke<CacheInfo>("scan_cache_info"),
   clearScanCache: () => invoke<number>("clear_scan_cache"),
+  removeRecentFile: (path: string) => invoke<History>("remove_recent_file", { path }),
+  clearRecentFiles: () => invoke<History>("clear_recent_files"),
+  recentFilesStatus: () => invoke<RecentStatus[]>("recent_files_status"),
+  rememberFolder: (path: string, folder: number | null) => invoke<void>("remember_folder", { path, folder }),
+  sessionToRestore: () => invoke<string[]>("session_to_restore"),
+  updateStatus: () => invoke<UpdateStatus>("update_status"),
+  updateCheck: () => invoke<UpdateStatus>("update_check"),
+  updateDownload: () => invoke<UpdateStatus>("update_download"),
+  updateInstall: () => invoke<void>("update_install"),
+  updateRemindLater: () => invoke<UpdateStatus>("update_remind_later"),
+  openLink: (which: ProjectLink) => invoke<void>("open_link", { which }),
+  closeApp: (cancelJobs: boolean) => invoke<void>("close_app", { cancelJobs }),
 
   onJobUpdate: (cb: (r: JobRecord) => void): Promise<UnlistenFn> => listen<JobRecord>("job://update", (e) => cb(e.payload)),
   onJobProgress: (cb: (r: JobRecord) => void): Promise<UnlistenFn> => listen<JobRecord>("job://progress", (e) => cb(e.payload)),
   onJobDone: (cb: (r: JobRecord) => void): Promise<UnlistenFn> => listen<JobRecord>("job://done", (e) => cb(e.payload)),
   onSearchProgress: (cb: (p: { id: string; done: number; total: number }) => void): Promise<UnlistenFn> =>
     listen<{ id: string; done: number; total: number }>("search://progress", (e) => cb(e.payload)),
+  onUpdateStatus: (cb: (s: UpdateStatus) => void): Promise<UnlistenFn> => listen<UpdateStatus>("update://status", (e) => cb(e.payload)),
+  onCloseBlocked: (cb: (b: Busy) => void): Promise<UnlistenFn> => listen<Busy>("app://close-blocked", (e) => cb(e.payload)),
 };
 
 export function errorMessage(e: unknown): string {

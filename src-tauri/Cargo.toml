@@ -20,3 +20,15 @@ tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
+semver = "1"
+# Update checks and installs (see src/updater.rs). The zip feature is for the v1 updater
+# artifact format, which this project does not publish.
+tauri-plugin-updater = { version = "2.14", default-features = false, features = ["rustls-tls", "system-proxy"] }
+
+[dev-dependencies]
+# The integration tests run the real updater plugin against a local HTTP server.
+tauri = { version = "2", features = ["test"] }
+# The release workflow verifies updater signatures with the same library the plugin uses
+# (examples/verify_update_signatures.rs).
+minisign-verify = "0.3"
+base64 = "0.22"
