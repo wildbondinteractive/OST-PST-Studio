@@ -110,7 +110,9 @@ message counts, every folder readable, every message readable).
 | The bundler also offers its NSIS plug-in DLLs and WiX extension DLLs to the sign command; `scripts/azure-sign.ps1` declines files that are not .exe, .msi or the uninstaller stub | PASS (by inspection of the stand-in's log) |
 | `scripts/verify-signatures.ps1` on unsigned local files reports every file as `NotSigned` and exits 1; `-Embedded` unpacks the NSIS installer (7-Zip) and the MSI (`msiexec /a`) and finds `ostpst-studio.exe`; `-ExpectedVersion` reads the version resource | PASS, locally |
 | `Invoke-ArtifactSigning` (module ArtifactSigning 0.1.20, the one the official action pins) exposes every parameter `scripts/azure-sign.ps1` passes | PASS, locally (module installed, parameters listed; no signing attempted) |
-| Azure Artifact Signing: OIDC login, signing, and verification of signed files | UNTESTED locally (no Azure access from a developer PC by design); runs on the first `v0.1.2` tag in the `release-signing` environment |
+| Azure Artifact Signing, first live run on tag `v0.1.2` (run 38774878740, commit 221c464): OIDC login over the immutable subject, module install, bundler sign hook (executable with NSS marker, uninstaller stub, NSIS installer, executable with MSI marker, MSI; seven third-party DLLs declined), portable and CLI signed by the official action, 65 of 65 verification checks on the runner | PASS |
+| The same five files downloaded from the run on a developer PC: `scripts/verify-signatures.ps1 -Embedded -ExpectedVersion 0.1.2` 65 of 65; signer `CN=Jacob Adlon`, issuer Microsoft ID Verified CS AOC CA 03, root Microsoft Identity Verification Root CA 2020, timestamper Microsoft Public RSA Time Stamping Authority; SHA256SUMS.txt matches every file | PASS |
+| Asset names: GitHub replaces spaces with dots, so the two installer names in the 0.1.2 `SHA256SUMS.txt` differ from the downloaded names (hashes still match by content). Installers are named without spaces from the next release | noted, fixed for 0.1.3 |
 
 ## Packaging
 

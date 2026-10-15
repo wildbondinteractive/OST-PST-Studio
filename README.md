@@ -40,8 +40,8 @@ build it yourself (below). Requirements: Windows 10/11 x64 and the WebView2 runt
 
 | File | Use |
 |---|---|
-| `OST-PST Studio_<version>_x64-setup.exe` | Per-user installer, no administrator rights needed |
-| `OST-PST Studio_<version>_x64_en-US.msi` | MSI for managed deployment |
+| `OST-PST-Studio_<version>_x64-setup.exe` | Per-user installer, no administrator rights needed |
+| `OST-PST-Studio_<version>_x64_en-US.msi` | MSI for managed deployment |
 | `OST-PST-Studio_<version>_x64-portable.exe` | Runs from anywhere, nothing installed |
 | `ostpst_<version>_x64.exe` | Command-line tool, no dependencies |
 

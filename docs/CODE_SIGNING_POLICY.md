@@ -9,12 +9,11 @@ in a Windows file name). It is linked from the README and from every release pag
 | Release | Signed | Notes |
 |---|---|---|
 | 0.1.0, 0.1.1 | No | Built by the public workflow, unsigned. Windows SmartScreen warns on first run. |
-| 0.1.2 and later | Yes, once the first verified signed release is published | Signed through Microsoft Azure Artifact Signing by the release workflow; every file is verified before it can be published. |
+| 0.1.2 and later | Yes | Signed through Microsoft Azure Artifact Signing by the release workflow; every file is verified before it can be published. The 0.1.2 set was verified on the runner and again on a separate machine on 15 October 2026 (signer CN=Jacob Adlon, chain to Microsoft Identity Verification Root CA 2020, Microsoft RFC 3161 timestamps, SHA-256). |
 
-No release is described as signed until a release built by the signing workflow has
-been published and its signatures have verified on a machine other than the one that
-built it. Until then, every published binary is unsigned and says so on its release
-page. Release notes and this table are updated together.
+A release is described as signed only after a set built by the signing workflow has
+verified both on the runner and on another machine. Release notes and this table are
+updated together.
 
 ## How releases are signed
 

@@ -180,8 +180,10 @@ jobs:
         run: |
           $v = "${{ steps.tag.outputs.version }}"
           New-Item -ItemType Directory -Force release | Out-Null
-          Copy-Item target\release\bundle\nsis\*.exe release\
-          Copy-Item target\release\bundle\msi\*.msi release\
+          # GitHub turns spaces in asset names into dots, which would make the names in
+          # SHA256SUMS.txt differ from what people download; so no spaces here.
+          Copy-Item target\release\bundle\nsis\*.exe "release\OST-PST-Studio_${v}_x64-setup.exe"
+          Copy-Item target\release\bundle\msi\*.msi "release\OST-PST-Studio_${v}_x64_en-US.msi"
           # The bundler restores the executable's marker to its plain state afterwards; the
           # portable build is that file, signed below as its own artifact.
           Copy-Item target\release\ostpst-studio.exe "release\OST-PST-Studio_${v}_x64-portable.exe"
