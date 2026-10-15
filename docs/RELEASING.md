@@ -62,9 +62,17 @@ HSM; signtool uses it in place.
 - Hardware token or cloud HSM certificate: install the vendor's client (for example
   SafeNet Authentication Client or the vendor's KSP) and plug in or sign in. The
   certificate appears in `Cert:\CurrentUser\My`.
-- Azure Trusted Signing: install the Trusted Signing dlib and client, sign in with
-  `az login`, and set `OSTPST_SIGN_MODE=azure` (see `scripts/sign.ps1` for the exact
-  signtool arguments it then uses, or adapt them to your account and profile names).
+- Azure Trusted Signing: install the Trusted Signing client (`Azure.CodeSigning.Dlib`),
+  sign in with `az login`, write the small metadata JSON Microsoft documents (endpoint,
+  account name, certificate profile name), and point the script at both:
+
+  ```powershell
+  $env:OSTPST_SIGN_DLIB = "C:\Tools\TrustedSigning\bin\x64\Azure.CodeSigning.Dlib.dll"
+  $env:OSTPST_SIGN_METADATA = "C:\Tools\TrustedSigning\metadata.json"
+  ```
+
+  With those set, `scripts/sign.ps1` signs through the cloud key instead of a local
+  certificate.
 
 Check that Windows can see a code-signing certificate:
 
