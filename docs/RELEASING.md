@@ -25,134 +25,65 @@ Bump the version in `Cargo.toml` (`workspace.package.version`), `package.json` a
 
 ## Publish on GitHub
 
-Published binaries are built by GitHub Actions, not on a developer PC, so that anyone can
-trace a download back to a workflow run and a commit. The repository is
-https://github.com/wildbondinteractive/OST-PST-Studio.
+Published binaries are built, signed and verified by GitHub Actions, never on a
+developer PC, so that anyone can trace a download back to a workflow run, a commit, and
+a signature. The repository is https://github.com/wildbondinteractive/OST-PST-Studio.
 
 1. Make sure the last `build` workflow run on `main` is green
-   (`.github/workflows/ci.yml`). Its artifacts are the same installers a release will
-   contain.
+   (`.github/workflows/ci.yml`).
 2. Update `docs/RELEASE_NOTES.md`; it becomes the body of the release.
 3. Tag and push:
 
    ```powershell
-   git tag v0.1.0
-   git push origin v0.1.0
+   git tag v0.1.2
+   git push origin v0.1.2
    ```
 
-4. `.github/workflows/release.yml` checks that the tag matches the version in
-   `Cargo.toml`, `package.json` and `src-tauri\tauri.conf.json`, runs the tests, builds the
-   four files above, computes SHA-256 checksums and creates a **draft** release with the
-   notes and the files attached.
-5. Download the artifacts from the draft, install the NSIS build on a clean Windows user
-   account, open a fixture, then publish the draft from the Releases page.
+   A release candidate is `v0.1.2-rc.1` with the manifests still at `0.1.2`; it is
+   published as a pre-release.
+4. `.github/workflows/release.yml` checks that the tag is a release tag and matches the
+   version in `Cargo.toml`, `package.json` and `src-tauri\tauri.conf.json`, runs the
+   tests, builds the executables, builds the installers with signing hooked into the
+   bundler (the executable is signed as each installer packages it, then the installer
+   is signed), signs the portable executable and the command-line tool, verifies every
+   file (including the executable unpacked from each installer), writes SHA-256
+   checksums and creates a **draft** release with the five files attached. Any signing
+   or verification failure fails the run and nothing is attached.
+5. Open the draft, read the verification summary in the run, install the NSIS build on
+   a clean Windows user account, check Properties, Digital Signatures on it, then publish
+   the draft from the Releases page.
 
 The workflow never publishes on its own. If anything in the run looks wrong, delete the
 draft and the tag and fix the source first.
 
 ## Signing
 
-Unsigned builds work, but Windows SmartScreen warns on first run and some mail-admin
-environments block them. The policy that governs signing, including who may approve it,
-is `docs/CODE_SIGNING_POLICY.md`. Read that first; the rest of this section is the
-mechanics.
+Releases are signed through Microsoft Azure Artifact Signing by the release workflow,
+authenticated with OpenID Connect; no certificate, key or secret exists outside Azure.
+The policy is `docs/CODE_SIGNING_POLICY.md`; the account, environment variables, role
+assignment and troubleshooting are in `docs/AZURE_CODE_SIGNING.md`. Local builds are
+unsigned and `npm run tauri build` needs no Azure access.
 
-### SignPath Foundation (the intended route)
-
-The project is applying to SignPath Foundation's free code-signing programme for
-open-source projects. When the application is accepted:
-
-1. In SignPath, create the project `OST-PST-Studio`, an artifact configuration
-   `windows-installers` that matches the files in the `unsigned-artifacts` workflow
-   artifact (NSIS installer, MSI, portable exe, CLI exe), and the signing policies
-   `test-signing` and `release-signing` as SignPath prescribes.
-2. In the GitHub repository settings add the secret `SIGNPATH_API_TOKEN` (the token of the
-   SignPath CI user) and the repository variable `SIGNPATH_ORGANIZATION_ID`.
-3. Nothing else changes. The `sign` job in `.github/workflows/release.yml` is skipped
-   while the variable is absent; once it exists, every tagged release submits its unsigned
-   artifact to SignPath, waits for a signing approver to approve it in SignPath, and the
-   draft release is assembled from the signed files instead. The release notes then carry
-   the line "Free code signing provided by SignPath.io, certificate by SignPath
-   Foundation." and only then.
-
-No credential for SignPath exists in the repository and none should ever be committed.
-
-### Signing on a developer PC with your own certificate
-
-This path exists for anyone who forks the project and holds a certificate of their own.
-Builds signed this way are not published as releases of this project (see the policy).
-Once the certificate is on the build PC, one command signs the application, the CLI, the
-NSIS installer and the MSI.
-
-### 1. Get a certificate
-
-| Option | Cost | Who it suits |
-|---|---|---|
-| Azure Trusted Signing (Microsoft) | about 10 USD/month, pay as you go | Individuals and companies; identity check takes days, no hardware token; signatures get SmartScreen reputation quickly |
-| OV certificate from DigiCert, Sectigo, SSL.com, GlobalSign | 200 to 500 USD/year, delivered on a hardware token or in a cloud HSM | Established companies; SmartScreen reputation builds over time |
-| EV certificate | 300 to 700 USD/year | Immediate SmartScreen reputation; stricter identity checks |
-| Self-signed test certificate | free | Only for testing the pipeline; Windows will still warn |
-
-Either way the private key never leaves the vendor's hardware or cloud HSM; signtool
-uses it in place.
-
-### 2. Install it on the build PC
-
-- Hardware token or cloud HSM certificate: install the vendor's client (for example
-  SafeNet Authentication Client or the vendor's KSP) and plug in or sign in. The
-  certificate appears in `Cert:\CurrentUser\My`.
-- Azure Trusted Signing: install the Trusted Signing client (`Azure.CodeSigning.Dlib`),
-  sign in with `az login`, write the small metadata JSON Microsoft documents (endpoint,
-  account name, certificate profile name), and point the script at both:
-
-  ```powershell
-  $env:OSTPST_SIGN_DLIB = "C:\Tools\TrustedSigning\bin\x64\Azure.CodeSigning.Dlib.dll"
-  $env:OSTPST_SIGN_METADATA = "C:\Tools\TrustedSigning\metadata.json"
-  ```
-
-  With those set, `scripts/sign.ps1` signs through the cloud key instead of a local
-  certificate.
-
-Check that Windows can see a code-signing certificate:
+To prove the packaging sequence locally, without Azure (builds, bundles with a logging
+stand-in for the sign command, and checks what the bundler hands it and what the
+installers contain):
 
 ```powershell
-Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert | Select-Object Subject, Thumbprint, NotAfter
+pwsh -File scripts\dev\staged-packaging-check.ps1
 ```
 
-### 3. Build signed
+To check a signed file, locally or on a download:
 
 ```powershell
-npm run build:signed
+.\scripts\verify-signatures.ps1 -Path "target\release\bundle\nsis\OST-PST Studio_0.1.2_x64-setup.exe" -Embedded
 ```
-
-That runs `tauri build` with `src-tauri/tauri.signed.conf.json`, which tells the bundler
-to call `scripts/sign.ps1` for every artifact. The script finds the certificate (or the
-one named by `OSTPST_SIGN_THUMBPRINT` when several are installed), signs with SHA-256,
-applies an RFC 3161 timestamp from `http://timestamp.digicert.com` (override with
-`OSTPST_TIMESTAMP_URL`), and verifies the result. Sign the CLI the same way:
-
-```powershell
-cargo build --release -p ostpst-cli
-powershell -File scripts\sign.ps1 target\release\ostpst.exe
-```
-
-### 4. Verify before publishing
-
-```powershell
-Get-AuthenticodeSignature "target\release\bundle\nsis\OST-PST Studio_0.1.0_x64-setup.exe" | Format-List Status, SignerCertificate, TimeStamperCertificate
-```
-
-`Status` must be `Valid` and the timestamper must be present. Then, in File Explorer,
-right-click the installer, Properties, Digital Signatures, and confirm the publisher
-name is the one you expect.
-
-Only after this do the release notes get to say the build is signed. A self-signed
-certificate does not count.
 
 ## Before tagging
 
 1. `cargo clippy --workspace --all-targets -- -D warnings` and `npm run typecheck` clean
    (the `build` workflow checks the same).
+0. Bump the version in `Cargo.toml`, `package.json` and `src-tauri\tauri.conf.json`
+   together; the release workflow refuses a tag that does not match all three.
 2. `cargo test --workspace` green with fixtures present.
 3. `python tests\libpff_compare.py` on a converted and a repaired fixture: identical (the
    `build` workflow runs this too).

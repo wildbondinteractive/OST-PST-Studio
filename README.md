@@ -51,8 +51,11 @@ file. Preferences, history and the scan cache can be cleared from the applicatio
 Settings page or by deleting `%APPDATA%\com.wildbondinteractive.ostpststudio` and
 `%LOCALAPPDATA%\com.wildbondinteractive.ostpststudio`.
 
-**Releases are not code-signed yet.** Windows SmartScreen warns on first run; "More
-info", "Run anyway". See the code signing policy below.
+**Signatures.** Releases from 0.1.2 onwards are signed through Microsoft Azure Artifact
+Signing; 0.1.0 and 0.1.1 are unsigned. See "Verifying a download" below. Windows
+SmartScreen can still warn on a correctly signed file from a project this new ("More
+info", "Run anyway"); a valid signature identifies the publisher, it does not buy
+reputation.
 
 ## Build
 
@@ -68,8 +71,8 @@ cargo build --release -p ostpst-cli   # target\release\ostpst.exe
 The same steps run on a GitHub-hosted Windows runner for every push
 (`.github/workflows/ci.yml`), and the installers it produces are attached to each run as
 artifacts, so what is published can be compared with what the committed source builds.
-Releases are built by `.github/workflows/release.yml` from a `v<version>` tag. See
-`docs/RELEASING.md`.
+Releases are built, signed and verified by `.github/workflows/release.yml` from a
+`v<version>` tag; see `docs/RELEASING.md`. Local builds are never signed.
 
 ## Command line
 
@@ -107,15 +110,40 @@ connections and collects no telemetry. See [docs/PRIVACY_POLICY.md](docs/PRIVACY
 
 ## Code signing policy
 
-No release is code-signed yet. An application to the
-[SignPath Foundation](https://signpath.org) free code-signing programme for open-source
-projects is pending; until a release page says it was signed through that programme,
-every published binary is unsigned and is described as such. Releases are built only by
-the GitHub Actions workflow in this repository from a tagged commit, and signing, once
-available, will be approved by hand for each release.
+Releases from 0.1.2 onwards are signed with Microsoft Azure Artifact Signing (Public
+Trust, Authenticode, SHA-256, timestamped), by the GitHub Actions release workflow,
+from the tagged commit, with no signing secrets anywhere in the project: the workflow
+authenticates to Azure with OpenID Connect. The executables are signed before the
+installers are built from them, and every file is verified, including the executable
+inside each installer, before it can be published. The publisher Windows shows is the
+verified identity of the project's maintainer, an individual; "Wildbond Interactive" is
+the project's name, not the certificate subject. Releases 0.1.0 and 0.1.1 are unsigned.
 
-The full policy, including who may commit, review and approve signing, is
-[docs/CODE_SIGNING_POLICY.md](docs/CODE_SIGNING_POLICY.md).
+The full policy is [docs/CODE_SIGNING_POLICY.md](docs/CODE_SIGNING_POLICY.md); the
+operator's manual is [docs/AZURE_CODE_SIGNING.md](docs/AZURE_CODE_SIGNING.md).
+
+### Verifying a download
+
+Each release page lists the SHA-256 of every file and ships them as `SHA256SUMS.txt`.
+
+```powershell
+Get-FileHash ".\OST-PST Studio_0.1.2_x64-setup.exe" -Algorithm SHA256
+Get-AuthenticodeSignature ".\OST-PST Studio_0.1.2_x64-setup.exe" | Format-List Status, SignerCertificate, TimeStamperCertificate
+```
+
+`Status` must be `Valid` with a timestamper present. In File Explorer: Properties,
+Digital Signatures. For the complete check the release workflow itself runs, including
+the executable inside an installer (needs the Windows SDK and 7-Zip):
+
+```powershell
+.\scripts\verify-signatures.ps1 -Path "$env:USERPROFILE\Downloads\OST-PST Studio_0.1.2_x64-setup.exe" -Embedded
+```
+
+## Reporting issues
+
+Open an issue at https://github.com/wildbondinteractive/OST-PST-Studio/issues. Never
+attach a real mailbox; the JSON report the application saves describes the file's
+structure without message contents and is usually enough.
 
 ## Licence
 

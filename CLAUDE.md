@@ -16,9 +16,12 @@ browsing and export. Rust engine (forked from pstfree, MIT) + Tauri 2 + React/Ty
 - No telemetry, no network calls, no remote content in previews unless the user allows
   it per message.
 - Keep upstream attribution banners at the top of the carried-over engine files.
-- Releases are built only by GitHub Actions (`docs/CODE_SIGNING_POLICY.md`). Never commit
-  signing credentials; SignPath is wired through the secret `SIGNPATH_API_TOKEN` and the
-  variable `SIGNPATH_ORGANIZATION_ID` only.
+- Releases are built, signed and verified only by `.github/workflows/release.yml`
+  (Azure Artifact Signing over OIDC in the `release-signing` environment; see
+  `docs/AZURE_CODE_SIGNING.md`). No signing secret, key or certificate ever enters the
+  repository; the environment holds identifiers only. Local builds are unsigned and
+  must never be described as signed. Bump the version in `Cargo.toml`, `package.json`
+  and `src-tauri/tauri.conf.json` together before tagging `v<version>`.
 
 ## Layout
 
@@ -27,14 +30,17 @@ Cargo.toml              workspace: crates/ostpst-core, crates/ostpst-cli, src-ta
 crates/ostpst-core      engine. ndb/ltp/convert/repair/export/crypt/cfbf/html are upstream;
                         mailbox/model/jobs/report/validate/amap/cache/ostfix/heapw/exporters/fsutil/props are new
 crates/ostpst-cli       `ostpst` command line (technicians, automation, --json)
-src-tauri               Tauri host: commands (lib.rs), job manager (jobs.rs), settings.rs
+src-tauri               Tauri host: commands (lib.rs), job manager (jobs.rs), settings.rs;
+                        tauri.release.conf.json adds the sign command for release builds only
 src                     React UI: lib/api.ts mirrors model.rs; pages/*, components/*
 fixtures/               fetch script writes fixtures/data (gitignored)
 tests/                  libpff_compare.py (independent validation), upstream bakeoff
 docs/                   audit, status, test results, competitor matrix, Outlook notes
-scripts/                fetch-fixtures.ps1, outlook-check.ps1 (manual), third-party-notices.py, dev helpers
-.github/workflows/      ci.yml (build + test + installer artifacts), release.yml (tag to draft release,
-                        SignPath signing job inactive until the secret and variable exist)
+scripts/                fetch-fixtures.ps1, outlook-check.ps1 (manual), verify-signatures.ps1,
+                        azure-sign.ps1 (the bundler's sign command, CI only), third-party-notices.py,
+                        dev/ (staged-packaging-check.ps1, log-sign-command.ps1)
+.github/workflows/      ci.yml (build + test + installer artifacts, unsigned), release.yml (tag:
+                        build, sign exes, bundle, sign installers, verify, draft release)
 ```
 
 ## Build and test

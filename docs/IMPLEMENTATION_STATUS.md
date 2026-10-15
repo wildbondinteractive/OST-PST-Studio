@@ -59,7 +59,7 @@ what is verified, and what is next. Pair it with `docs/TEST_RESULTS.md`.
 | Large-file performance | Partial | Streaming writes, bounded memory, contents-table listings. Not measured above the 16 MB fixture |
 | Installer and portable packaging | Done via Tauri bundler; portable is the bare `ostpst-studio.exe` plus WebView2 runtime | |
 | Continuous integration and release builds | Done: `.github/workflows/ci.yml` builds, tests and uploads the installers on a GitHub-hosted Windows runner; `release.yml` turns a `v*` tag into a draft release with checksums | `.github/workflows/` |
-| Code signing | Not yet: releases are unsigned. SignPath Foundation application prepared; the workflow's signing job is inactive until the secret and variable exist | `docs/CODE_SIGNING_POLICY.md` |
+| Code signing | Implemented: the release workflow signs both executables, bundles the installers from the signed executable, signs the installers, and verifies every file (including the executable inside each installer) with Azure Artifact Signing over OIDC. Awaiting the first real run on a tag; 0.1.0 and 0.1.1 are unsigned | `.github/workflows/release.yml`, `scripts/verify-signatures.ps1`, `docs/CODE_SIGNING_POLICY.md`, `docs/AZURE_CODE_SIGNING.md` |
 | Third-party notices | Done: generated from the lock files | `THIRD_PARTY_NOTICES.md`, `scripts/third-party-notices.py` |
 
 ## Phase 4: stretch

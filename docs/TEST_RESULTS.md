@@ -101,6 +101,17 @@ message counts, every folder readable, every message readable).
 | Keyboard shortcuts (Ctrl+1..7, Ctrl+O, Ctrl+F) | UNTESTED by harness |
 | High DPI | PASS (screenshots were taken at 150 percent scaling) |
 
+## Release pipeline (signing)
+
+| Check | Result |
+|---|---|
+| `.github/workflows/release.yml` and `ci.yml` parse as YAML | PASS |
+| Staged packaging (`scripts/dev/staged-packaging-check.ps1`): `tauri build --no-bundle`, then `tauri bundle --bundles nsis,msi` with a logging stand-in as the sign command. The bundler rebuilt nothing (executable hash identical before and after), called the sign command in the order executable (marker NSS), NSIS uninstaller stub, NSIS installer, executable (marker MSI), MSI, and the executable unpacked from each installer carries that installer's marker | PASS, locally, 0.1.2 |
+| The bundler also offers its NSIS plug-in DLLs and WiX extension DLLs to the sign command; `scripts/azure-sign.ps1` declines files that are not .exe, .msi or the uninstaller stub | PASS (by inspection of the stand-in's log) |
+| `scripts/verify-signatures.ps1` on unsigned local files reports every file as `NotSigned` and exits 1; `-Embedded` unpacks the NSIS installer (7-Zip) and the MSI (`msiexec /a`) and finds `ostpst-studio.exe`; `-ExpectedVersion` reads the version resource | PASS, locally |
+| `Invoke-ArtifactSigning` (module ArtifactSigning 0.1.20, the one the official action pins) exposes every parameter `scripts/azure-sign.ps1` passes | PASS, locally (module installed, parameters listed; no signing attempted) |
+| Azure Artifact Signing: OIDC login, signing, and verification of signed files | UNTESTED locally (no Azure access from a developer PC by design); runs on the first `v0.1.2` tag in the `release-signing` environment |
+
 ## Packaging
 
 | Artifact | Result |

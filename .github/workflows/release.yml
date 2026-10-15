@@ -1,12 +1,33 @@
-# Build a release of OST/PST Studio from a tag and attach the artifacts to a DRAFT
-# GitHub Release. A maintainer publishes the draft by hand after checking it.
+# Build, sign, verify and publish a release of OST/PST Studio from a version tag.
 #
-# Signing: the "sign" job submits the unsigned artifacts to SignPath and waits for
-# manual approval there. It runs only when the repository has the SignPath secret and
-# variable configured (see docs/CODE_SIGNING_POLICY.md, "Preparing for SignPath").
-# Until then it is skipped and the release is published unsigned, and says so.
+# One Windows job does the work, in this order, because the Tauri bundler rewrites a
+# bundle-type marker inside the executable before packaging each installer (so a copy
+# signed in advance would no longer verify), and because the installers must be signed
+# after they are built:
 #
-# Tag with: git tag v0.1.0 && git push origin v0.1.0
+#   1. check the tag against the versions in the manifests
+#   2. build and test from the tag; build the executables without installers
+#   3. log in to Azure with OIDC (no secrets anywhere)
+#   4. `tauri bundle` with src-tauri/tauri.release.conf.json, whose sign command,
+#      scripts/azure-sign.ps1, signs the executable for each installer right after the
+#      bundler has prepared it, and then signs each finished installer
+#   5. sign the portable executable and the command-line tool with the official
+#      azure/artifact-signing-action (same signing component, same settings)
+#   6. verify every file to be published, including the executable unpacked from
+#      inside each installer
+#   7. write SHA256SUMS.txt and upload the set as one artifact
+#
+# A second job attaches that set to a draft GitHub Release. It runs only when the first
+# job succeeded, so an unsigned or unverified file can never reach a release. There is
+# no unsigned fallback: a signing or verification failure fails the run.
+#
+# Signing runs under the protected `release-signing` environment: GitHub issues an OIDC
+# token for this job that Entra ID exchanges for a short-lived Azure credential
+# (workload identity federation). No Azure secret, password or key exists in this
+# repository or in GitHub. The environment holds identifiers only (client, tenant,
+# subscription, endpoint, account, certificate profile). See docs/AZURE_CODE_SIGNING.md.
+#
+# Tag with: git tag v1.2.3 && git push origin v1.2.3     (or v1.2.3-rc.1 for a pre-release)
 
 name: release
 
@@ -14,42 +35,91 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build and sign, e.g. v0.1.2 or v0.1.2-rc.1"
+        required: true
+        type: string
 
+# The default for every job is read-only; jobs ask for what they need.
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  # The version of the ArtifactSigning PowerShell module that azure/artifact-signing-action@v2
+  # pins; scripts/azure-sign.ps1 uses the same one so both signing paths are identical.
+  ARTIFACT_SIGNING_MODULE_VERSION: "0.1.20"
 
 jobs:
-  build:
-    name: Build Windows x64 from the tag
-    runs-on: windows-latest
-    timeout-minutes: 60
+  build-sign-verify:
+    name: Build, sign and verify (Windows x64)
+    # windows-2025 and windows-2022 are the runners the Artifact Signing action supports.
+    runs-on: windows-2025
+    timeout-minutes: 90
+    environment: release-signing
+    permissions:
+      id-token: write # the OIDC token Azure exchanges for a signing credential
+      contents: read
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Version from the tag must match the manifests
-        id: version
+      # Only a release tag is ever signed: v1.2.3, or v1.2.3-rc.N for a pre-release. A
+      # branch build, a pull request or an arbitrary ref is refused here, and the
+      # `release-signing` environment carries the same tag rule on GitHub's side.
+      - name: Resolve and check the release tag
+        id: tag
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}".TrimStart("v")
+          $tag = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ github.event.inputs.tag }}" } else { "${{ github.ref_name }}" }
+          if ("${{ github.event_name }}" -eq "push" -and "${{ github.ref_type }}" -ne "tag") {
+            throw "the release workflow runs for tags only, not for '${{ github.ref }}'"
+          }
+          if ($tag -notmatch '^v(\d+\.\d+\.\d+)(-rc\.\d+)?$') {
+            throw "'$tag' is not a release tag; expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N"
+          }
+          $version = $Matches[1]
+          $prerelease = [bool]$Matches[2]
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "prerelease=$($prerelease.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          "Release tag $tag, version $version, pre-release: $prerelease"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          persist-credentials: false
+
+      - name: Tag must exist and match the manifests
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.tag.outputs.tag }}"
+          if (-not (git tag --list $tag)) { throw "tag '$tag' does not exist in the repository" }
+          $want = "${{ steps.tag.outputs.version }}"
           $cargo = (Select-String -Path Cargo.toml -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
           $npm = (Get-Content package.json | ConvertFrom-Json).version
           $tauri = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
           "tag=$tag cargo=$cargo npm=$npm tauri=$tauri"
-          if ("${{ github.event_name }}" -eq "push" -and ($tag -ne $cargo -or $tag -ne $npm -or $tag -ne $tauri)) {
-            throw "the tag version must equal the version in Cargo.toml, package.json and tauri.conf.json"
+          if ($want -ne $cargo -or $want -ne $npm -or $want -ne $tauri) {
+            throw "the tag's version ($want) must equal the version in Cargo.toml, package.json and src-tauri/tauri.conf.json"
           }
-          "version=$cargo" >> $env:GITHUB_OUTPUT
 
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+      - name: Node
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - name: Install npm packages
+        run: npm ci
 
       - name: Fetch test fixtures
         shell: pwsh
@@ -57,97 +127,161 @@ jobs:
 
       - name: Tests
         run: cargo test --workspace --locked
+      - name: TypeScript check
+        run: npm run typecheck
 
-      - name: Command-line tool
+      # Build everything first; nothing is signed until every binary exists.
+      - name: Build the command-line tool
         run: cargo build --release --locked -p ostpst-cli
+      - name: Build the desktop application (front end and executable, no installers yet)
+        run: npm run tauri build -- --ci --no-bundle
 
-      - name: Desktop application and installers
-        run: npm run tauri build -- --ci
-
-      - name: Collect artifacts
+      - name: Version resources must carry the release version
         shell: pwsh
         run: |
+          $want = "${{ steps.tag.outputs.version }}"
+          foreach ($f in "target\release\ostpst-studio.exe", "target\release\ostpst.exe") {
+            $v = (Get-Item $f).VersionInfo
+            "$f  product='$($v.ProductName)' version='$($v.ProductVersion)'"
+            if (-not $v.ProductVersion.StartsWith($want)) { throw "$f carries version '$($v.ProductVersion)', expected $want" }
+          }
+
+      # ---- Signing -------------------------------------------------------------------
+      - name: Install the Artifact Signing PowerShell module (pinned, same as the action)
+        shell: pwsh
+        run: |
+          Install-Module -Name ArtifactSigning -RequiredVersion $env:ARTIFACT_SIGNING_MODULE_VERSION -Force -Repository PSGallery
+          Import-Module ArtifactSigning
+          "ArtifactSigning $((Get-Module ArtifactSigning).Version)"
+
+      # Workload identity federation: the job's OIDC token is exchanged for an Azure CLI
+      # session for the Entra application. Nothing here is a secret; the values are
+      # identifiers held as variables on the `release-signing` environment.
+      - name: Azure login (OIDC, no secrets)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # The bundler calls scripts/azure-sign.ps1 (named in tauri.release.conf.json) for the
+      # executable once per installer, after writing that installer's marker into it, and
+      # then for each finished installer. `tauri bundle` runs no cargo build.
+      - name: Build and sign the installers (executable signed inside each)
+        shell: pwsh
+        env:
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_CERT_PROFILE: ${{ vars.AZURE_CERT_PROFILE }}
+        run: npx tauri bundle --bundles nsis,msi --config src-tauri/tauri.release.conf.json
+
+      - name: Collect the release set
+        shell: pwsh
+        run: |
+          $v = "${{ steps.tag.outputs.version }}"
           New-Item -ItemType Directory -Force release | Out-Null
           Copy-Item target\release\bundle\nsis\*.exe release\
           Copy-Item target\release\bundle\msi\*.msi release\
-          Copy-Item target\release\ostpst-studio.exe release\OST-PST-Studio_${{ steps.version.outputs.version }}_x64-portable.exe
-          Copy-Item target\release\ostpst.exe release\ostpst_${{ steps.version.outputs.version }}_x64.exe
-          Get-ChildItem release | ForEach-Object { "$($_.Name)  $($_.Length) bytes" }
+          # The bundler restores the executable's marker to its plain state afterwards; the
+          # portable build is that file, signed below as its own artifact.
+          Copy-Item target\release\ostpst-studio.exe "release\OST-PST-Studio_${v}_x64-portable.exe"
+          Copy-Item target\release\ostpst.exe "release\ostpst_${v}_x64.exe"
+          $files = Get-ChildItem release -File
+          if ($files.Count -ne 4) { throw "expected 4 files in the release set, found $($files.Count): $($files.Name -join ', ')" }
+          $files | ForEach-Object { "$($_.Name)  $($_.Length) bytes" }
 
-      - uses: actions/upload-artifact@v4
-        id: upload
+      - name: Sign the portable executable and the command-line tool
+        uses: azure/artifact-signing-action@v2
         with:
-          name: unsigned-artifacts
+          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_CERT_PROFILE }}
+          files: |
+            ${{ github.workspace }}\release\OST-PST-Studio_${{ steps.tag.outputs.version }}_x64-portable.exe
+            ${{ github.workspace }}\release\ostpst_${{ steps.tag.outputs.version }}_x64.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: OST/PST Studio
+          description-url: https://github.com/${{ github.repository }}
+          # Only the Azure CLI session from the login step may be used as a credential.
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: false
+          exclude-azure-powershell-credential: true
+          exclude-azure-developer-cli-credential: true
+          exclude-interactive-browser-credential: true
+
+      # ---- Verify everything, checksum -----------------------------------------------
+      - name: Verify every file to be published, and the executable inside each installer
+        shell: pwsh
+        run: .\scripts\verify-signatures.ps1 -Path release -Embedded -ExpectedVersion "${{ steps.tag.outputs.version }}" -ExpectedSubject "${{ vars.RELEASE_SIGNER_SUBJECT }}"
+
+      - name: Checksums
+        shell: pwsh
+        run: |
+          $lines = Get-ChildItem release -File | Sort-Object Name | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          }
+          # Unix line endings, so `sha256sum -c` on any platform accepts the file.
+          [System.IO.File]::WriteAllText("$PWD\release\SHA256SUMS.txt", ($lines -join "`n") + "`n")
+          Get-Content release\SHA256SUMS.txt
+
+      - name: Upload the signed and verified release set
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.tag.outputs.tag }}
           if-no-files-found: error
           path: release/*
 
-  # Inactive until the SignPath application is approved and the secret and variable
-  # exist. No credential is stored in this file.
-  sign:
-    name: Sign with SignPath (manual approval)
-    needs: build
-    if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Submit the unsigned artifacts for signing
-        id: signpath
-        uses: signpath/github-action-submit-signing-request@v1
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: OST-PST-Studio
-          signing-policy-slug: release-signing
-          github-artifact-id: ${{ needs.build.outputs.artifact-id }}
-          artifact-configuration-slug: windows-installers
-          wait-for-completion: true
-          output-artifact-directory: signed
-      - uses: actions/upload-artifact@v4
-        with:
-          name: signed-artifacts
-          path: signed/*
-
   publish:
     name: Draft the GitHub Release
-    needs: [build, sign]
-    if: ${{ always() && needs.build.result == 'success' }}
+    needs: build-sign-verify
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Download artifacts (signed when the signing job ran, unsigned otherwise)
-        uses: actions/download-artifact@v4
         with:
-          name: ${{ needs.sign.result == 'success' && 'signed-artifacts' || 'unsigned-artifacts' }}
+          ref: ${{ needs.build-sign-verify.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.build-sign-verify.outputs.tag }}
           path: release
-      - name: Checksums of the files being published
+      - name: The set is complete and matches its checksums
         shell: bash
         run: |
           cd release
-          sha256sum * > SHA256SUMS.txt
-          cat SHA256SUMS.txt
+          ls -l
+          sha256sum -c SHA256SUMS.txt
+          [ "$(ls -1 | wc -l)" -eq 5 ] || { echo "expected 5 files"; exit 1; }
       - name: Release notes
         shell: bash
         run: |
           {
-            # docs/RELEASE_NOTES.md carries the "Code signing policy" section itself and
-            # says the release is unsigned; only a signed build adds to that.
             cat docs/RELEASE_NOTES.md
             echo
-            if [ "${{ needs.sign.result }}" = "success" ]; then
-              echo "## Signature"
-              echo
-              echo "Free code signing provided by SignPath.io, certificate by SignPath Foundation."
-              echo
-            fi
             echo "## SHA-256"
+            echo
+            echo "Check a download with \`Get-FileHash <file> -Algorithm SHA256\` in PowerShell, or \`sha256sum -c SHA256SUMS.txt\`."
             echo
             echo '```'
             cat release/SHA256SUMS.txt
             echo '```'
           } > notes.md
-      - name: Draft release
+      - name: Draft the release with the signed files attached
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
-          name: OST/PST Studio ${{ needs.build.outputs.version }}
+          tag_name: ${{ needs.build-sign-verify.outputs.tag }}
+          name: OST/PST Studio ${{ needs.build-sign-verify.outputs.tag }}
           body_path: notes.md
+          draft: true
+          prerelease: ${{ needs.build-sign-verify.outputs.prerelease == 'true' }}
           files: release/*
+          fail_on_unmatched_files: true
+          overwrite_files: false

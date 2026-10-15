@@ -1,7 +1,7 @@
 {
   "name": "ostpst-studio",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Open, browse, search, convert, repair and export Outlook OST and PST files on Windows",
   "license": "MIT",
   "author": "Jacob Adlon",
@@ -16,8 +16,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
-    "tauri": "tauri",
-    "build:signed": "tauri build --config src-tauri/tauri.signed.conf.json"
+    "tauri": "tauri"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.3.3",
