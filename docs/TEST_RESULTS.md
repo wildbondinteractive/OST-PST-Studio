@@ -114,12 +114,22 @@ and the installed version are shown; F5 refreshes without reloading the window; 
 Settings field keeps focus while typing (it lost focus after each character in 0.1.2); no
 uncaught errors. 13 of 13 PASS.
 
+### The v0.1.3 release (run 38803667481, commit 319730c)
+
+| Check | Result |
+|---|---|
+| Release workflow, every step: Azure signing, Authenticode verification (65 of 65), updater signing with the production key, updater verification with the app's key (14 of 14: both signatures bind 0.1.3, `latest.json` parses with the updater's own parser, both URLs name the matching installer), checksums, draft | PASS |
+| The draft's files downloaded and verified on the developer PC: Authenticode 65 of 65 with signer CN=Jacob Adlon; updater signatures and manifest 14 of 14; `sha256sum -c SHA256SUMS.txt` by file name | PASS |
+| Private key material in the run log | None |
+| Before publishing: `releases/latest/download/latest.json` | 404, `latest` still v0.1.2: the draft was not visible to installed copies |
+| MANUAL, by the maintainer on a second PC: 0.1.3 installed over 0.1.2 with the setup program; Settings, Software updates shows 0.1.3, "Installed with the setup program (per user)", Notify me; Check for updates after publishing reports "You're running the latest version of OST/PST Studio." | PASS |
+| After publishing (2026-10-16): v0.1.3 is Latest; the live `latest.json` announces 0.1.3; both installers it names download (HTTP 200, expected sizes) | PASS |
+
 ### Not yet tested
 
 | Item | Status |
 |---|---|
-| A real update from a published GitHub release | UNTESTED until 0.1.4 is published: 0.1.2 has no updater, and 0.1.3 is the first version that can be updated |
-| The release workflow's updater steps on GitHub | UNTESTED until the production updater key is configured and v0.1.3 is tagged |
+| A real update delivered from a published GitHub release | UNTESTED until 0.1.4 is published: 0.1.3 is the first version that can be updated |
 | MSI in-place install | UNTESTED end to end (download and verification PASS; the install needs elevation) |
 
 ## Real mailbox: 1.57 GB Outlook 2016 OST (not committed, not a fixture)
